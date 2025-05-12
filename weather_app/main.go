@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -32,37 +32,49 @@ func getAPIKey() (apiKey string, err error) {
 	return apiKey, nil
 }
 
-func weatherHandler(w http.ResponseWriter, r *http.Request) {
+// fetchWeather gets weather data for a location from the Tomorrow.io API
+func fetchWeather(location string) (map[string]interface{}, error) {
+	apiKey, err := getAPIKey()
+	if err != nil {
+		return nil, err
+	}
 
+	escapedLocation := url.QueryEscape(location)
+	apiURL := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", escapedLocation, apiKey)
+	
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to fetch weather data")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.Errorf("API request failed: %s", resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read response")
+	}
+
+	var jsonResponse map[string]interface{}
+	if err := json.Unmarshal(body, &jsonResponse); err != nil {
+		return nil, errors.Wrap(err, "failed to parse weather response")
+	}
+
+	return jsonResponse, nil
+}
+
+func weatherHandler(w http.ResponseWriter, r *http.Request) {
 	location := r.URL.Query().Get("location")
 	if location == "" {
 		http.Error(w, "Missing 'location' query parameter", http.StatusBadRequest)
 		return
 	}
 
-	escapedLocation := url.QueryEscape(location)
-	apiURL := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", escapedLocation, apiKey)
-	resp, err := http.Get(apiURL)
+	jsonResponse, err := fetchWeather(location)
 	if err != nil {
-		http.Error(w, "Failed to fetch weather data", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		http.Error(w, fmt.Sprintf("API request failed: %s", resp.Status), resp.StatusCode)
-		return
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "Failed to read response", http.StatusInternalServerError)
-		return
-	}
-
-	var jsonResponse map[string]interface{}
-	if err := json.Unmarshal(body, &jsonResponse); err != nil {
-		http.Error(w, "Failed to parse weather response", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -71,38 +83,12 @@ func weatherHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func mattermostHandler(w http.ResponseWriter, r *http.Request) {
-	apiKey := os.Getenv("TOMORROW_API_KEY")
-	if apiKey == "" {
-		http.Error(w, "API key not set in TOMORROW_API_KEY", http.StatusInternalServerError)
-		return
-	}
-
 	// We'll ignore the actual POST payload for now
 	location := "wendell,nc"
-	escapedLocation := url.QueryEscape(location)
-	apiURL := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", escapedLocation, apiKey)
-
-	resp, err := http.Get(apiURL)
+	
+	jsonResponse, err := fetchWeather(location)
 	if err != nil {
-		http.Error(w, "Failed to fetch weather data", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		http.Error(w, fmt.Sprintf("API request failed: %s", resp.Status), resp.StatusCode)
-		return
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "Failed to read response", http.StatusInternalServerError)
-		return
-	}
-
-	var jsonResponse map[string]interface{}
-	if err := json.Unmarshal(body, &jsonResponse); err != nil {
-		http.Error(w, "Failed to parse weather response", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
