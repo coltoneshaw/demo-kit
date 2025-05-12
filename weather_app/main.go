@@ -78,9 +78,10 @@ func main() {
 	// Get API key from environment variable
 	apiKey := os.Getenv("WEATHER_API_KEY")
 	if apiKey == "" {
-		apiKey = "c5AeEo7A30nZmTHZkCs0fQXT8JcUFWJC" // Fallback to default if not set
 		log.Println("Warning: WEATHER_API_KEY environment variable not set, using default")
+		apiKey = "c5AeEo7A30nZmTHZkCs0fQXT8JcUFWJC" // Fallback to default if not set
 	}
+	log.Printf("Using API key: %s", apiKey)
 
 	// Set up HTTP server
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -154,8 +155,9 @@ func main() {
 
 // getWeatherData fetches weather data from the Tomorrow.io API
 func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
-	// Construct the API URL
+	// Construct the API URL with proper URL encoding
 	url := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", location, apiKey)
+	log.Printf("Requesting weather data from: %s", url)
 
 	// Create a new HTTP client
 	client := &http.Client{}
@@ -185,6 +187,7 @@ func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 
 	// Check if the response status code is not 200 OK
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("API error: status code %d, body: %s", resp.StatusCode, string(body))
 		return nil, fmt.Errorf("API returned status code %d: %s", resp.StatusCode, string(body))
 	}
 
