@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 )
 
@@ -156,7 +157,8 @@ func main() {
 // getWeatherData fetches weather data from the Tomorrow.io API
 func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 	// Construct the API URL with proper URL encoding
-	url := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", location, apiKey)
+	encodedLocation := http.URLEscape(location)
+	url := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", encodedLocation, apiKey)
 	log.Printf("Requesting weather data from: %s", url)
 
 	// Create a new HTTP client
