@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -9,9 +10,51 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 )
 
 func main() {
+	// Command-line flags for testing
+	testMode := flag.Bool("test", false, "Run a test query instead of starting the server")
+	testLocation := flag.String("location", "raleigh,nc", "Location to test in test mode")
+	flag.Parse()
+
+	// Test mode - just fetch and display weather for a location
+	if *testMode {
+		weather, err := fetchWeather(*testLocation)
+		if err != nil {
+			log.Fatalf("Error fetching weather: %v", err)
+		}
+		
+		// Extract and display weather information
+		data, ok := weather["data"].(map[string]interface{})
+		if !ok {
+			log.Fatalf("Invalid response format")
+		}
+		
+		values, ok := data["values"].(map[string]interface{})
+		if !ok {
+			log.Fatalf("Invalid values format")
+		}
+		
+		temp, ok := values["temperature"].(float64)
+		if !ok {
+			log.Fatalf("Temperature data not found")
+		}
+		
+		weatherCode, ok := values["weatherCode"].(float64)
+		if !ok {
+			log.Fatalf("Weather code not found")
+		}
+		
+		code := int(weatherCode)
+		condition := mapWeatherCode(code)
+		
+		fmt.Printf("Weather for %s: %.1f°C and %s\n", *testLocation, temp, condition)
+		return
+	}
+
+	// Normal server mode
 	http.HandleFunc("/weather", weatherHandler)
 	http.HandleFunc("/incoming", mattermostHandler)
 
@@ -19,6 +62,7 @@ func main() {
 	port := getPort()
 	
 	fmt.Printf("Listening on http://localhost:%s\n", port)
+	fmt.Println("Press Ctrl+C to stop the server")
 	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
 		log.Fatalf("Failed to start server: %v", err)
@@ -101,8 +145,27 @@ func weatherHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func mattermostHandler(w http.ResponseWriter, r *http.Request) {
-	// We'll ignore the actual POST payload for now
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// Default location
 	location := "wendell,nc"
+	
+	// Try to parse the Mattermost payload to extract a custom location
+	var payload map[string]interface{}
+	
+	if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+		// Check if this is a slash command with text
+		if text, ok := payload["text"].(string); ok && text != "" {
+			trimmedText := strings.TrimSpace(text)
+			if trimmedText != "" {
+				location = trimmedText
+				log.Printf("Using custom location from slash command: %s", location)
+			}
+		}
+	}
 	
 	jsonResponse, err := fetchWeather(location)
 	if err != nil {
@@ -138,10 +201,14 @@ func mattermostHandler(w http.ResponseWriter, r *http.Request) {
 	code := int(weatherCode)
 	condition := mapWeatherCode(code)
 
+	// Format location for display
+	displayLocation := strings.ReplaceAll(location, ",", ", ")
+	displayLocation = strings.Title(strings.ToLower(displayLocation))
+	
 	// Create a response for Mattermost
 	response := map[string]interface{}{
 		"response_type": "in_channel",
-		"text": fmt.Sprintf("🌤️ Weather in Wendell, NC: %.1f°C and %s", temp, condition),
+		"text": fmt.Sprintf("🌤️ Weather in %s: %.1f°C and %s", displayLocation, temp, condition),
 	}
 
 	// Respond with JSON for Mattermost
