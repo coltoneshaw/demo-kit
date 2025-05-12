@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 )
 
@@ -15,16 +14,16 @@ type WeatherResponse struct {
 	Data struct {
 		Time   string `json:"time"`
 		Values struct {
-			Temperature            float64 `json:"temperature"`
-			TemperatureApparent    float64 `json:"temperatureApparent"`
-			Humidity               int     `json:"humidity"`
+			Temperature              float64 `json:"temperature"`
+			TemperatureApparent      float64 `json:"temperatureApparent"`
+			Humidity                 int     `json:"humidity"`
 			PrecipitationProbability int     `json:"precipitationProbability"`
-			RainIntensity          float64 `json:"rainIntensity"`
-			WindSpeed              float64 `json:"windSpeed"`
-			WindGust               float64 `json:"windGust"`
-			WindDirection          int     `json:"windDirection"`
-			CloudCover             int     `json:"cloudCover"`
-			WeatherCode            int     `json:"weatherCode"`
+			RainIntensity            float64 `json:"rainIntensity"`
+			WindSpeed                float64 `json:"windSpeed"`
+			WindGust                 float64 `json:"windGust"`
+			WindDirection            int     `json:"windDirection"`
+			CloudCover               int     `json:"cloudCover"`
+			WeatherCode              int     `json:"weatherCode"`
 		} `json:"values"`
 	} `json:"data"`
 	Location struct {
@@ -107,7 +106,7 @@ func main() {
 
 		// Set response headers
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		// Return the weather data
 		json.NewEncoder(w).Encode(weatherData)
 	})
@@ -141,7 +140,7 @@ func main() {
 
 		// Set response headers
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		// Return the response
 		json.NewEncoder(w).Encode(response)
 	})
