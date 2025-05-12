@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-
-	"github.com/pkg/errors"
 )
 
 func main() {
@@ -26,7 +24,7 @@ func main() {
 func getAPIKey() (apiKey string, err error) {
 	apiKey = os.Getenv("TOMORROW_API_KEY")
 	if apiKey == "" {
-		return "", errors.New("API key not set in TOMORROW_API_KEY")
+		return "", fmt.Errorf("API key not set in TOMORROW_API_KEY")
 	}
 
 	return apiKey, nil
@@ -44,22 +42,22 @@ func fetchWeather(location string) (map[string]interface{}, error) {
 	
 	resp, err := http.Get(apiURL)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to fetch weather data")
+		return nil, fmt.Errorf("failed to fetch weather data: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.Errorf("API request failed: %s", resp.Status)
+		return nil, fmt.Errorf("API request failed: %s", resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read response")
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var jsonResponse map[string]interface{}
 	if err := json.Unmarshal(body, &jsonResponse); err != nil {
-		return nil, errors.Wrap(err, "failed to parse weather response")
+		return nil, fmt.Errorf("failed to parse weather response: %w", err)
 	}
 
 	return jsonResponse, nil
@@ -93,15 +91,42 @@ func mattermostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract data
-	values := jsonResponse["data"].(map[string]interface{})["values"].(map[string]interface{})
-	temp := values["temperature"]
-	code := int(values["weatherCode"].(float64))
-
+	data, ok := jsonResponse["data"].(map[string]interface{})
+	if !ok {
+		http.Error(w, "Invalid response format", http.StatusInternalServerError)
+		return
+	}
+	
+	values, ok := data["values"].(map[string]interface{})
+	if !ok {
+		http.Error(w, "Invalid values format", http.StatusInternalServerError)
+		return
+	}
+	
+	temp, ok := values["temperature"].(float64)
+	if !ok {
+		http.Error(w, "Temperature data not found", http.StatusInternalServerError)
+		return
+	}
+	
+	weatherCode, ok := values["weatherCode"].(float64)
+	if !ok {
+		http.Error(w, "Weather code not found", http.StatusInternalServerError)
+		return
+	}
+	
+	code := int(weatherCode)
 	condition := mapWeatherCode(code)
 
-	// Respond with a plaintext message for Mattermost
-	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "🌤️ Weather in Wendell, NC: %.1f°C and %s", temp, condition)
+	// Create a response for Mattermost
+	response := map[string]interface{}{
+		"response_type": "in_channel",
+		"text": fmt.Sprintf("🌤️ Weather in Wendell, NC: %.1f°C and %s", temp, condition),
+	}
+
+	// Respond with JSON for Mattermost
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func mapWeatherCode(code int) string {
