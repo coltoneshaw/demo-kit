@@ -4,21 +4,41 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 )
 
 func main() {
 	http.HandleFunc("/weather", weatherHandler)
 	http.HandleFunc("/incoming", mattermostHandler)
 
-	fmt.Println("Listening on http://localhost:8085")
-	err := http.ListenAndServe(":8085", nil)
+	// Get port from environment or use default
+	port := getPort()
+	
+	fmt.Printf("Listening on http://localhost:%s\n", port)
+	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
-		fmt.Println("Failed to start server:", err)
-		os.Exit(1)
+		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// getPort returns the port from environment variable or default 8085
+func getPort() string {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8085"
+	}
+	
+	// Validate port is a number
+	if _, err := strconv.Atoi(port); err != nil {
+		log.Printf("Invalid PORT value: %s, using default 8085", port)
+		return "8085"
+	}
+	
+	return port
 }
 
 func getAPIKey() (apiKey string, err error) {
@@ -139,8 +159,50 @@ func mapWeatherCode(code int) string {
 		return "partly cloudy"
 	case 1102:
 		return "mostly cloudy"
+	case 1103:
+		return "cloudy"
+	case 2000:
+		return "fog"
+	case 2100:
+		return "light fog"
+	case 3000:
+		return "light wind"
+	case 3001:
+		return "wind"
+	case 3002:
+		return "strong wind"
 	case 4000:
-		return "raining"
+		return "drizzle"
+	case 4001:
+		return "rain"
+	case 4200:
+		return "light rain"
+	case 4201:
+		return "heavy rain"
+	case 5000:
+		return "snow"
+	case 5001:
+		return "flurries"
+	case 5100:
+		return "light snow"
+	case 5101:
+		return "heavy snow"
+	case 6000:
+		return "freezing drizzle"
+	case 6001:
+		return "freezing rain"
+	case 6200:
+		return "light freezing rain"
+	case 6201:
+		return "heavy freezing rain"
+	case 7000:
+		return "ice pellets"
+	case 7101:
+		return "heavy ice pellets"
+	case 7102:
+		return "light ice pellets"
+	case 8000:
+		return "thunderstorm"
 	default:
 		return "unknown conditions"
 	}
