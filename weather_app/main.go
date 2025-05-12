@@ -47,6 +47,33 @@ type MattermostResponse struct {
 	ResponseType string `json:"response_type"`
 }
 
+// WeatherCodeDescription maps weather codes to human-readable descriptions
+var WeatherCodeDescription = map[int]string{
+	1000: "Clear",
+	1100: "Mostly Clear",
+	1101: "Partly Cloudy",
+	1102: "Mostly Cloudy",
+	1001: "Cloudy",
+	2000: "Fog",
+	2100: "Light Fog",
+	4000: "Drizzle",
+	4001: "Rain",
+	4200: "Light Rain",
+	4201: "Heavy Rain",
+	5000: "Snow",
+	5001: "Flurries",
+	5100: "Light Snow",
+	5101: "Heavy Snow",
+	6000: "Freezing Drizzle",
+	6001: "Freezing Rain",
+	6200: "Light Freezing Rain",
+	6201: "Heavy Freezing Rain",
+	7000: "Ice Pellets",
+	7101: "Heavy Ice Pellets",
+	7102: "Light Ice Pellets",
+	8000: "Thunderstorm",
+}
+
 func main() {
 	// Get API key from environment variable
 	apiKey := os.Getenv("WEATHER_API_KEY")
@@ -56,6 +83,12 @@ func main() {
 	}
 
 	// Set up HTTP server
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
 	http.HandleFunc("/weather", func(w http.ResponseWriter, r *http.Request) {
 		// Get location from query parameter, default to Wendell, NC
 		location := r.URL.Query().Get("location")
@@ -166,13 +199,21 @@ func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 
 // formatWeatherResponse creates a human-readable weather report
 func formatWeatherResponse(weather *WeatherResponse) string {
+	// Get weather condition description
+	weatherDesc, ok := WeatherCodeDescription[weather.Data.Values.WeatherCode]
+	if !ok {
+		weatherDesc = "Unknown"
+	}
+
 	return fmt.Sprintf("Weather for %s:\n"+
+		"Condition: %s\n"+
 		"Temperature: %.1f°C (Feels like: %.1f°C)\n"+
 		"Humidity: %d%%\n"+
 		"Precipitation Probability: %d%%\n"+
 		"Wind: %.1f km/h (Gusts: %.1f km/h)\n"+
 		"Cloud Cover: %d%%",
 		weather.Location.Name,
+		weatherDesc,
 		weather.Data.Values.Temperature,
 		weather.Data.Values.TemperatureApparent,
 		weather.Data.Values.Humidity,
