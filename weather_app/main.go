@@ -159,7 +159,11 @@ func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 	// Construct the API URL with proper URL encoding
 	encodedLocation := url.QueryEscape(location)
 	apiURL := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", encodedLocation, apiKey)
-	log.Printf("Requesting weather data from: %s", apiURL)
+	
+	// Log the URL with the API key partially masked for security
+	maskedKey := "****" + apiKey[len(apiKey)-4:]
+	maskedURL := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", encodedLocation, maskedKey)
+	log.Printf("Requesting weather data from: %s", maskedURL)
 
 	// Create a new HTTP client
 	client := &http.Client{}
@@ -170,9 +174,8 @@ func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 		return nil, err
 	}
 
-	// Add headers
+	// Add required headers
 	req.Header.Add("accept", "application/json")
-	req.Header.Add("accept-encoding", "deflate, gzip, br")
 
 	// Send the request
 	resp, err := client.Do(req)
