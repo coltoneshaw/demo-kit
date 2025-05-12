@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
-		"net/url"
+
+	"github.com/pkg/errors"
 )
 
 func main() {
@@ -21,12 +23,16 @@ func main() {
 	}
 }
 
-func weatherHandler(w http.ResponseWriter, r *http.Request) {
-	apiKey := os.Getenv("TOMORROW_API_KEY")
+func getAPIKey() (apiKey string, err error) {
+	apiKey = os.Getenv("TOMORROW_API_KEY")
 	if apiKey == "" {
-		http.Error(w, "API key not set in TOMORROW_API_KEY", http.StatusInternalServerError)
-		return
+		return "", errors.New("API key not set in TOMORROW_API_KEY")
 	}
+
+	return apiKey, nil
+}
+
+func weatherHandler(w http.ResponseWriter, r *http.Request) {
 
 	location := r.URL.Query().Get("location")
 	if location == "" {
