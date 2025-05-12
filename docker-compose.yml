@@ -1,0 +1,133 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    env_file:
+      - ./files/env_vars.env
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 100
+    read_only: false
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    volumes:
+      - ./volumes/db/primary/data:/var/lib/postgresql/data
+      - ./files/postgres/primary/init.sh:/docker-entrypoint-initdb.d/init.sh
+      - ./files/postgres/primary/primary_config.conf:/files/postgres/primary/primary_config.conf
+    healthcheck:
+      test: pg_isready -U mmuser -d mattermost
+      interval: 10s
+      timeout: 3s
+      retries: 3 
+  openldap:
+    platform: linux/amd64
+    container_name: openldap
+    hostname: openldap
+    restart: unless-stopped
+    image: rroemhild/test-openldap:latest
+    volumes:
+      - ./ldap:/mattermost/config:rw
+    ports:
+      - "10389:10389"
+      - "10636:10636"
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - 9090:9090
+    volumes:
+      - ./files/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./volumes/prometheus:/prometheus
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:10.0.4
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    env_file:
+      - ./files/env_vars.env
+    volumes:
+      - ./files/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./files/grafana/provisioning:/etc/grafana/provisioning
+      - ./volumes/grafana:/var/lib/grafana
+  mattermost:
+    platform: linux/amd64
+    container_name: mattermost
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: mattermost/mattermost-enterprise-edition:release-10.7
+    env_file:
+      - ./files/env_vars.env
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    read_only: false
+    ports:
+      - "8065:8065"
+      - "8067:8067"
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./volumes/mattermost/config:/mattermost/config:rw
+      - ./volumes/mattermost/data:/mattermost/data:rw
+      - ./volumes/mattermost/logs:/mattermost/logs:rw
+      - ./volumes/mattermost/plugins:/mattermost/plugins:rw
+      - ./volumes/mattermost/client/plugins:/mattermost/client/plugins:rw
+      - ./files/mattermost/plugins:/ai-plugins
+  keycloak:
+    container_name: keycloak
+    restart: unless-stopped
+    platform: linux/amd64
+    image: quay.io/keycloak/keycloak:18.0.0
+    volumes:
+      - ./volumes/keycloak:/opt/keycloak/data:rw
+    env_file:
+      - ./files/env_vars.env
+    ports:
+      - 8080:8080
+    command:
+      - start-dev
+  elasticsearch:
+    image: elasticsearch:7.17.10
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+      - logger.level=DEBUG
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./volumes/elastic/data:/usr/share/elasticsearch/data
+      - ./volumes/elastic/plugins:/usr/share/elasticsearch/plugins
+    command: >
+      /bin/sh -c "./bin/elasticsearch-plugin list | grep -q analysis-icu 
+      || yes | ./bin/elasticsearch-plugin install --silent analysis-icu; 
+      /usr/local/bin/docker-entrypoint.sh eswrapper"
+    ports:
+      - 9200:9200
+      - 9300:9300
+  mattermost-rtcd:
+    container_name: mattermost-rtcd
+    platform: linux/amd64
+    image: mattermost/rtcd:latest
+    restart: unless-stopped
+    volumes:
+      - ./volumes/rtcd/logs:/logs:rw
+    ports:
+      - "8443:8443/udp"
+      - "8443:8443/tcp"
+      - "8045:8045"
+    env_file:
+      - ./files/env_vars.env

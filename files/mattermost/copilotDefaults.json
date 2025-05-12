@@ -1,0 +1,81 @@
+{
+     "PluginSettings": {
+        "Plugins": {
+            "mattermost-ai": {
+                "config": {
+                    "allowedUpstreamHostnames": "",
+                    "bots": [
+                        {
+                            "channelAccessLevel": 0,
+                            "channelIDs": [],
+                            "customInstructions": "",
+                            "disableTools": true,
+                            "displayName": "gemma3",
+                            "enableVision": false,
+                            "id": "gemma3id",
+                            "name": "gemma3",
+                            "service": {
+                                "apiKey": "",
+                                "apiURL": "http://host.docker.internal:11434/v1",
+                                "defaultModel": "gemma3",
+                                "orgId": "",
+                                "outputTokenLimit": 0,
+                                "sendUserId": false,
+                                "streamingTimeoutSeconds": 0,
+                                "tokenLimit": 0,
+                                "type": "openaicompatible"
+                            },
+                            "teamIDs": [],
+                            "userAccessLevel": 0,
+                            "userIDs": []
+                        },
+                        {
+                            "channelAccessLevel": 0,
+                            "channelIDs": [],
+                            "customInstructions": "",
+                            "disableTools": true,
+                            "displayName": "mistral",
+                            "enableVision": false,
+                            "id": "mistral1id",
+                            "name": "mistral",
+                            "service": {
+                                "apiKey": "",
+                                "apiURL": "http://host.docker.internal:11434/v1",
+                                "defaultModel": "mistral",
+                                "orgId": "",
+                                "outputTokenLimit": 0,
+                                "sendUserId": false,
+                                "streamingTimeoutSeconds": 0,
+                                "tokenLimit": 0,
+                                "type": "openaicompatible"
+                            },
+                            "teamIDs": [],
+                            "userAccessLevel": 0,
+                            "userIDs": []
+                        }
+                    ],
+                    "defaultBotName": "gemma3",
+                    "enableLLMTrace": false,
+                    "services": null,
+                    "transcriptBackend": ""
+                }
+            },
+            "mattermost-channel-translations": {
+                "config": {
+                    "enableTranslations": true,
+                    "translateSystemMessages": false,
+                    "translationBotName": "gemma3",
+                    "translationLanguages": "en,es,fr"
+                }
+            }
+        },
+        "PluginStates": {
+            "mattermost-ai": {
+                "Enable": true
+            },
+            "mattermost-channel-translations": {
+                "Enable": true
+            }
+        }
+    }
+}
