@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +16,7 @@ type WeatherResponse struct {
 		Values struct {
 			Temperature            float64 `json:"temperature"`
 			TemperatureApparent    float64 `json:"temperatureApparent"`
-			Humidity               float64 `json:"humidity"`
+			Humidity               int     `json:"humidity"`
 			PrecipitationProbability int     `json:"precipitationProbability"`
 			RainIntensity          float64 `json:"rainIntensity"`
 			WindSpeed              float64 `json:"windSpeed"`
@@ -145,7 +145,7 @@ func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 	defer resp.Body.Close()
 
 	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
