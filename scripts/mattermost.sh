@@ -223,6 +223,7 @@ setupWebhooks() {
             echo "Found existing weather webhook in Mattermost with ID: $WEBHOOK_ID"
           else
             echo "Found existing weather webhook in Mattermost with different ID: $ACTUAL_ID"
+            echo "Webhook for: Weather App"
             # Get the ID of the existing webhook
             EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "weather" | grep "ID:" | awk '{print $2}')
             if [ -n "$EXISTING_ID" ]; then
@@ -286,6 +287,7 @@ setupWebhooks() {
             echo "Found existing flight webhook in Mattermost with ID: $WEBHOOK_ID"
           else
             echo "Found existing flight webhook in Mattermost with different ID: $ACTUAL_ID"
+            echo "Webhook for: FlightAware App"
             # Get the ID of the existing webhook
             EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "flight-app" | grep "ID:" | awk '{print $2}')
             if [ -n "$EXISTING_ID" ]; then
