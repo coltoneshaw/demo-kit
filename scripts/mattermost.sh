@@ -135,6 +135,15 @@ createWeatherWebhook() {
 
 # Set up webhook for weather app
 setupWebhook() {
+  # Check if webhook URL is already set in env_vars.env
+  WEBHOOK_URL=$(grep "MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
+  
+  if [ -n "$WEBHOOK_URL" ] && [ "$WEBHOOK_URL" != "" ]; then
+    echo "Webhook URL already exists in env_vars.env: $WEBHOOK_URL"
+    echo "Skipping webhook creation"
+    return
+  fi
+  
   # Get the channel ID for off-topic in the test team using channel search
   echo "Getting channel ID for off-topic in test team..."
   CHANNEL_SEARCH=$(docker exec -it mattermost mmctl channel search off-topic --team test --local)
