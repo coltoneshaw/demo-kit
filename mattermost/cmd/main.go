@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/yourusername/yourproject/mattermost"
+	"github.com/coltoneshaw/demokit/mattermost"
 )
 
 func main() {
