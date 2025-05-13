@@ -108,7 +108,7 @@ createWeatherWebhook() {
     echo "Creating incoming webhook for weather app..."
     WEBHOOK_ID=$(docker exec -it mattermost mmctl webhook create-incoming \
       --channel "$CHANNEL_ID" \
-      --user sysadmin \
+      --user professor \
       --display-name weather \
       --description "Weather responses" \
       --icon http://weather-app:8085/bot.png \
@@ -126,9 +126,10 @@ createWeatherWebhook() {
 
 # Set up webhook for weather app
 setupWebhook() {
-  # Get the channel ID for off-topic in the test team
+  # Get the channel ID for off-topic in the test team using channel search
   echo "Getting channel ID for off-topic in test team..."
-  CHANNEL_ID=$(docker exec -it mattermost mmctl channel list test --local | grep -w "off-topic" | awk '{print $2}')
+  CHANNEL_SEARCH=$(docker exec -it mattermost mmctl channel search off-topic --team test --local)
+  CHANNEL_ID=$(echo "$CHANNEL_SEARCH" | grep -o "Channel ID :[a-z0-9]*" | cut -d':' -f2 | tr -d ' ')
   
   if [ -n "$CHANNEL_ID" ]; then
     echo "Found off-topic channel ID: $CHANNEL_ID"
