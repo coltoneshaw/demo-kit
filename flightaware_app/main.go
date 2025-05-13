@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -18,7 +19,7 @@ func main() {
 	http.HandleFunc("/flights/departure", handleFlightDepartureRequest)
 	http.HandleFunc("/health", handleHealthCheck)
 	http.HandleFunc("/webhook", handleIncomingWebhook)
-	
+
 	// Add a debug endpoint to log request details
 	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Debug request received: %s %s", r.Method, r.URL.Path)

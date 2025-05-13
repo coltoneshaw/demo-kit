@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -76,24 +75,24 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request format", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Log the form data for debugging
 	log.Printf("Received webhook form data: %v", r.Form)
-	
+
 	// Extract values from form data
 	text := r.FormValue("text")
 	channelID := r.FormValue("channel_id")
 	userID := r.FormValue("user_id")
 	command := r.FormValue("command")
-	
+
 	log.Printf("Command: %s, Text: %s, ChannelID: %s, UserID: %s", command, text, channelID, userID)
-	
+
 	if channelID == "" {
 		log.Printf("Missing channel_id field")
 		http.Error(w, "Missing channel_id field", http.StatusBadRequest)
 		return
 	}
-	
+
 	// If this is the /flights command
 	if command == "/flights" {
 		// If text is empty or "help", show help
@@ -101,16 +100,16 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request) {
 			sendHelpResponse(w, channelID)
 			return
 		}
-		
+
 		// Parse the command arguments
 		args := parseCommand(text)
-		
+
 		// Check if this is a departures command
 		if len(args) >= 1 && args[0] == "departures" {
 			handleDeparturesCommand(w, args[1:], channelID, userID)
 			return
 		}
-		
+
 		// Unknown subcommand
 		sendErrorResponse(w, channelID, fmt.Sprintf("Unknown subcommand: %s. Use `/flights help` for available commands.", text))
 		return
@@ -177,7 +176,7 @@ func handleDeparturesCommand(w http.ResponseWriter, args []string, channelID, us
 
 	// Format the response
 	response := formatFlightResponse(flights, airport, start, end)
-	
+
 	// Send the response
 	mattermostResponse := MattermostResponse{
 		Text:         response,
@@ -221,7 +220,7 @@ func parseCommand(text string) []string {
 	var args []string
 	inQuotes := false
 	current := ""
-	
+
 	for _, char := range text {
 		if char == '"' {
 			inQuotes = !inQuotes
@@ -234,10 +233,10 @@ func parseCommand(text string) []string {
 			current += string(char)
 		}
 	}
-	
+
 	if current != "" {
 		args = append(args, current)
 	}
-	
+
 	return args
 }
