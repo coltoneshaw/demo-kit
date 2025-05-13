@@ -102,8 +102,8 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request, subscriptionM
 
 	// If this is the /flights command
 	if command == "/flights" {
-		// If text is empty or "help", show help
-		if text == "" || text == "help" {
+		// If text is empty or "help" or "--help", show help
+		if text == "" || text == "help" || text == "--help" {
 			sendHelpResponse(w, channelID)
 			return
 		}
@@ -125,6 +125,9 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request, subscriptionM
 				return
 			case "list":
 				handleListCommand(w, channelID, subscriptionManager)
+				return
+			case "--help":
+				sendHelpResponse(w, channelID)
 				return
 			}
 		}
@@ -174,7 +177,7 @@ func handleDeparturesCommand(w http.ResponseWriter, args []string, channelID, us
 				}
 				i++
 			}
-		case "--help":
+		case "--help", "help":
 			sendHelpResponse(w, channelID)
 			return
 		}
