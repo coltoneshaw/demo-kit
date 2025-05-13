@@ -44,7 +44,10 @@ func NewClient(serverURL, adminUser, adminPass, teamName string) *Client {
 func (c *Client) Login() error {
 	_, resp, err := c.API.Login(c.AdminUser, c.AdminPass)
 	if err != nil {
-		return fmt.Errorf("login failed: %v, response: %v", err, resp.Error)
+		if resp != nil && resp.Error != nil {
+			return fmt.Errorf("login failed: %v, response: %v", err, resp.Error)
+		}
+		return fmt.Errorf("login failed: %v", err)
 	}
 	return nil
 }
