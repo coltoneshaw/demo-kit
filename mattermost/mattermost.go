@@ -2,10 +2,8 @@ package mattermost
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -96,12 +94,12 @@ func (c *Client) CreateUsers() error {
 			Email:    "sysadmin@example.com",
 			Password: "Testpassword123!",
 		}
-		
+
 		createdUser, resp, err := c.API.CreateUser(sysadmin)
 		if err != nil {
 			return fmt.Errorf("failed to create sysadmin: %v, response: %v", err, resp.Error)
 		}
-		
+
 		// Make user a system admin
 		patch := &model.UserPatch{
 			Roles: model.NewString("system_admin system_user"),
@@ -122,7 +120,7 @@ func (c *Client) CreateUsers() error {
 			Email:    "user-1@example.com",
 			Password: "Testpassword123!",
 		}
-		
+
 		_, resp, err := c.API.CreateUser(user1)
 		if err != nil {
 			return fmt.Errorf("failed to create user-1: %v, response: %v", err, resp.Error)
@@ -161,7 +159,7 @@ func (c *Client) CreateTeam() error {
 			DisplayName: "Test Team",
 			Type:        model.TeamOpen,
 		}
-		
+
 		var createResp *model.Response
 		team, createResp, err = c.API.CreateTeam(newTeam)
 		if err != nil {
@@ -219,13 +217,13 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Trigger:      "flights",
 			Method:       "P",
 			URL:          c.FlightAppURL,
-			CreatorId:    "",  // Will be set to current user
+			CreatorId:    "", // Will be set to current user
 			Title:        "Flight Departures",
 			Description:  "Get flight departures",
 			AutoComplete: true,
 			Username:     "flight-bot",
 		}
-		
+
 		_, resp, err := c.API.CreateCommand(flightsCmd)
 		if err != nil {
 			fmt.Printf("Warning: Failed to create flights command: %v\n", err)
@@ -244,13 +242,13 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Trigger:      "weather",
 			Method:       "P",
 			URL:          c.WeatherAppURL,
-			CreatorId:    "",  // Will be set to current user
+			CreatorId:    "", // Will be set to current user
 			Title:        "Weather Information",
 			Description:  "Get weather information",
 			AutoComplete: true,
 			Username:     "weather-bot",
 		}
-		
+
 		_, resp, err := c.API.CreateCommand(weatherCmd)
 		if err != nil {
 			fmt.Printf("Warning: Failed to create weather command: %v\n", err)
@@ -267,17 +265,17 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 // UpdateWebhookConfig updates the webhook configuration in the env file
 func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerName string) error {
 	fmt.Printf("Created webhook with ID: %s for %s\n", webhookID, appName)
-	
+
 	// Update env_vars.env file with the webhook URL
 	webhookURL := fmt.Sprintf("http://mattermost:8065/hooks/%s", webhookID)
 	fmt.Printf("Setting webhook URL: %s for %s\n", webhookURL, envVarName)
-	
+
 	// Read the env file
 	data, err := os.ReadFile(EnvFile)
 	if err != nil {
 		return fmt.Errorf("failed to read env file: %v", err)
 	}
-	
+
 	// Replace the line with the new webhook URL
 	lines := strings.Split(string(data), "\n")
 	for i, line := range lines {
@@ -286,15 +284,15 @@ func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerNa
 			break
 		}
 	}
-	
+
 	// Write the updated content back to the file
 	err = os.WriteFile(EnvFile, []byte(strings.Join(lines, "\n")), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write env file: %v", err)
 	}
-	
+
 	fmt.Printf("Updated env_vars.env with webhook URL for %s\n", appName)
-	
+
 	// Restart the app container
 	fmt.Printf("Restarting %s container...\n", containerName)
 	cmd := exec.Command("docker", "restart", containerName)
@@ -302,7 +300,7 @@ func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerNa
 		return fmt.Errorf("failed to restart container: %v", err)
 	}
 	fmt.Printf("%s restarted successfully\n", appName)
-	
+
 	return nil
 }
 
@@ -313,14 +311,14 @@ func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, 
 	if err != nil {
 		return fmt.Errorf("failed to get webhooks: %v", err)
 	}
-	
+
 	for _, hook := range hooks {
 		if hook.DisplayName == displayName {
 			fmt.Printf("Webhook '%s' already exists\n", displayName)
 			return nil
 		}
 	}
-	
+
 	// Create the webhook
 	fmt.Printf("Creating incoming webhook for %s...\n", appName)
 	hook := &model.IncomingWebhook{
@@ -329,12 +327,12 @@ func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, 
 		Description: description,
 		Username:    "professor",
 	}
-	
+
 	newHook, resp, err := c.API.CreateIncomingWebhook(hook)
 	if err != nil {
 		return fmt.Errorf("failed to create webhook: %v", err)
 	}
-	
+
 	return c.UpdateWebhookConfig(newHook.Id, appName, envVarName, containerName)
 }
 
@@ -371,7 +369,7 @@ func (c *Client) SetupWebhooks() error {
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
-	
+
 	var teamID string
 	for _, team := range teams {
 		if team.Name == c.TeamName {
@@ -379,16 +377,16 @@ func (c *Client) SetupWebhooks() error {
 			break
 		}
 	}
-	
+
 	if teamID == "" {
 		return fmt.Errorf("team '%s' not found", c.TeamName)
 	}
-	
+
 	channels, resp, err := c.API.GetPublicChannelsForTeam(teamID, 0, 100, "")
 	if err != nil {
 		return fmt.Errorf("failed to get channels: %v", err)
 	}
-	
+
 	var channelID string
 	for _, channel := range channels {
 		if channel.Name == "off-topic" {
@@ -396,23 +394,23 @@ func (c *Client) SetupWebhooks() error {
 			break
 		}
 	}
-	
+
 	if channelID == "" {
 		return fmt.Errorf("off-topic channel not found in team %s", c.TeamName)
 	}
-	
+
 	fmt.Printf("Found off-topic channel ID: %s\n", channelID)
-	
+
 	// Setup Weather webhook
 	if err := c.CreateWeatherWebhook(channelID); err != nil {
 		fmt.Printf("Warning: Failed to create weather webhook: %v\n", err)
 	}
-	
+
 	// Setup Flight webhook
 	if err := c.CreateFlightWebhook(channelID); err != nil {
 		fmt.Printf("Warning: Failed to create flight webhook: %v\n", err)
 	}
-	
+
 	return nil
 }
 
@@ -421,19 +419,19 @@ func (c *Client) SetupTestData() error {
 	fmt.Println("===========================================")
 	fmt.Println("Setting up test Data for Mattermost")
 	fmt.Println("===========================================")
-	
+
 	if err := c.CreateUsers(); err != nil {
 		return err
 	}
-	
+
 	if err := c.CreateTeam(); err != nil {
 		return err
 	}
-	
+
 	if err := c.SetupWebhooks(); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -442,15 +440,15 @@ func (c *Client) Setup() error {
 	if err := c.WaitForStart(); err != nil {
 		return err
 	}
-	
+
 	if err := c.Login(); err != nil {
 		return err
 	}
-	
+
 	if err := c.SetupTestData(); err != nil {
 		return err
 	}
-	
+
 	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
 	return nil
 }
@@ -460,7 +458,7 @@ func (c *Client) EchoLogins() {
 	fmt.Println("===========================================")
 	fmt.Println("Mattermost logins")
 	fmt.Println("===========================================")
-	
+
 	fmt.Println("- System admin")
 	fmt.Println("     - username: sysadmin")
 	fmt.Println("     - password: Testpassword123!")
