@@ -416,6 +416,29 @@ func main() {
 		log.Printf("Processing weather request from user: %s (%s) in channel: %s (%s) with text: %s",
 			userName, userID, channelName, channelID, text)
 
+		// Check for simple commands first
+		if text == "limits" {
+			hourlyUsage, dailyUsage := subscriptionManager.CalculateAPIUsage()
+			
+			limitsText := fmt.Sprintf("**Weather API Usage Limits**\n\n"+
+				"**Current Usage:**\n"+
+				"- Hourly: %d/%d requests (%d%% used)\n"+
+				"- Daily: %d/%d requests (%d%% used)\n\n"+
+				"**Active Subscriptions:** %d\n\n"+
+				"Use `/weather --subscribe --location <location> --update-frequency <ms>` to create a new subscription.",
+				hourlyUsage, subscriptionManager.HourlyLimit, (hourlyUsage*100)/subscriptionManager.HourlyLimit,
+				dailyUsage, subscriptionManager.DailyLimit, (dailyUsage*100)/subscriptionManager.DailyLimit,
+				len(subscriptionManager.Subscriptions))
+			
+			response := MattermostResponse{
+				Text:         limitsText,
+				ResponseType: "ephemeral",
+				ChannelID:    channelID,
+			}
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+		
 		// Parse command flags
 		var location string
 		var subscribe bool
@@ -482,7 +505,7 @@ func main() {
 			location = text
 		}
 
-		// Handle limits request
+		// Handle limits request (for backward compatibility with --limits flag)
 		if showLimits {
 			hourlyUsage, dailyUsage := subscriptionManager.CalculateAPIUsage()
 			
