@@ -113,21 +113,38 @@ func main() {
 	})
 
 	http.HandleFunc("/incoming", func(w http.ResponseWriter, r *http.Request) {
+		// Set content type header early
+		w.Header().Set("Content-Type", "application/json")
+		
 		if r.Method != http.MethodPost {
+			log.Printf("Method not allowed: %s", r.Method)
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
+		// Read and log the request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Error reading request body: %v", err)
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return
+		}
+		log.Printf("Received webhook payload: %s", string(body))
+		
 		// Parse the incoming webhook payload
 		var payload MattermostPayload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		if err := json.Unmarshal(body, &payload); err != nil {
+			log.Printf("Error parsing JSON payload: %v", err)
 			http.Error(w, "Invalid request payload", http.StatusBadRequest)
 			return
 		}
 
+		log.Printf("Processing weather request from user: %s in channel: %s", payload.UserID, payload.Channel)
+		
 		// Get weather data for Wendell, NC
 		weatherData, err := getWeatherData("27591 us", apiKey)
 		if err != nil {
+			log.Printf("Error fetching weather data: %v", err)
 			http.Error(w, fmt.Sprintf("Error fetching weather data: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -139,11 +156,14 @@ func main() {
 			ResponseType: "in_channel", // Make the response visible to everyone in the channel
 		}
 
-		// Set response headers
-		w.Header().Set("Content-Type", "application/json")
-
 		// Return the response
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Error encoding response: %v", err)
+			http.Error(w, "Error encoding response", http.StatusInternalServerError)
+			return
+		}
+		
+		log.Printf("Successfully sent weather response")
 	})
 
 	// Start the server
