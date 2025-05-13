@@ -139,8 +139,9 @@ services:
     restart: unless-stopped
     ports:
       - "8085:8085"
+    env_file:
+      - ./files/env_vars.env
     environment:
-      - WEATHER_API_KEY=${WEATHER_API_KEY}
       - MATTERMOST_WEBHOOK_URL=http://mattermost:8065/hooks/your-webhook-id
     volumes:
       - ./volumes/weather-app:/app/data

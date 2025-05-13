@@ -57,11 +57,11 @@ func startSubscription(sub *Subscription, apiKey string, subscriptionManager *Su
 
 func main() {
 	// Get API key from environment variable
-	apiKey := os.Getenv("WEATHER_API_KEY")
+	apiKey := os.Getenv("TOMORROW_API_KEY")
 	if apiKey == "" {
-		log.Fatal("Error: WEATHER_API_KEY environment variable not set. Please set this environment variable before starting the application.")
+		log.Fatal("Error: TOMORROW_API_KEY environment variable not set. Please set this environment variable in the env_vars.env file.")
 	}
-	log.Println("Weather API key loaded successfully")
+	log.Println("Tomorrow.io API key loaded successfully")
 
 	// Create subscription manager with file path
 	subscriptionsFile := "./subscriptions.json"
