@@ -73,7 +73,7 @@ func (c *Client) WaitForStart() error {
 // CreateUsers creates test users if they don't exist
 func (c *Client) CreateUsers() error {
 	// Check if sysadmin user exists
-	users, resp, err := c.API.GetUsers(0, 100, "")
+	users, resp, err := c.API.GetUsers(context.Background(), 0, 100, "")
 	if err != nil {
 		return fmt.Errorf("failed to get users: %v", err)
 	}
@@ -108,7 +108,7 @@ func (c *Client) CreateUsers() error {
 		patch := &model.UserPatch{
 			Roles: model.NewString("system_admin system_user"),
 		}
-		_, resp, err = c.API.PatchUser(createdUser.Id, patch)
+		_, resp, err = c.API.PatchUser(context.Background(), createdUser.Id, patch)
 		if err != nil {
 			return fmt.Errorf("failed to make user system admin: %v", err)
 		}
@@ -139,7 +139,7 @@ func (c *Client) CreateUsers() error {
 // CreateTeam creates a test team if it doesn't exist
 func (c *Client) CreateTeam() error {
 	// Check if team exists
-	teams, resp, err := c.API.GetAllTeams("", 0, 100)
+	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
@@ -165,7 +165,7 @@ func (c *Client) CreateTeam() error {
 		}
 
 		var createResp *model.Response
-		team, createResp, err = c.API.CreateTeam(newTeam)
+		team, createResp, err = c.API.CreateTeam(context.Background(), newTeam)
 		if err != nil {
 			return fmt.Errorf("failed to create team: %v, response status code: %v", err, createResp.StatusCode)
 		}
@@ -174,14 +174,14 @@ func (c *Client) CreateTeam() error {
 	}
 
 	// Add users to the team
-	users, resp, err := c.API.GetUsers(0, 100, "")
+	users, resp, err := c.API.GetUsers(context.Background(), 0, 100, "")
 	if err != nil {
 		return fmt.Errorf("failed to get users: %v", err)
 	}
 
 	for _, user := range users {
 		if user.Username == "sysadmin" || user.Username == "user-1" {
-			_, resp, err := c.API.AddTeamMember(team.Id, user.Id)
+			_, resp, err := c.API.AddTeamMember(context.Background(), team.Id, user.Id)
 			if err != nil {
 				// Check if the error is because the user is already a member
 				if resp.StatusCode == 400 {
@@ -199,7 +199,7 @@ func (c *Client) CreateTeam() error {
 // CreateSlashCommands creates slash commands for the apps
 func (c *Client) CreateSlashCommands(teamID string) error {
 	// Get existing commands
-	commands, resp, err := c.API.ListCommands(teamID, true)
+	commands, resp, err := c.API.ListCommands(context.Background(), teamID, true)
 	if err != nil {
 		return fmt.Errorf("failed to list commands: %v", err)
 	}
@@ -232,7 +232,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Username:     "flight-bot",
 		}
 
-		_, resp, err := c.API.CreateCommand(flightsCmd)
+		_, resp, err := c.API.CreateCommand(context.Background(), flightsCmd)
 		if err != nil {
 			fmt.Printf("Warning: Failed to create flights command: %v\n", err)
 		} else {
@@ -257,7 +257,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Username:     "weather-bot",
 		}
 
-		_, resp, err := c.API.CreateCommand(weatherCmd)
+		_, resp, err := c.API.CreateCommand(context.Background(), weatherCmd)
 		if err != nil {
 			fmt.Printf("Warning: Failed to create weather command: %v\n", err)
 		} else {
@@ -315,7 +315,7 @@ func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerNa
 // CreateAppWebhook creates an incoming webhook for an app
 func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, iconURL, envVarName, containerName string) error {
 	// Check if webhook already exists
-	hooks, resp, err := c.API.GetIncomingWebhooks(0, 1000, "")
+	hooks, resp, err := c.API.GetIncomingWebhooks(context.Background(), 0, 1000, "")
 	if err != nil {
 		return fmt.Errorf("failed to get webhooks: %v", err)
 	}
@@ -336,7 +336,7 @@ func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, 
 		Username:    "professor",
 	}
 
-	newHook, resp, err := c.API.CreateIncomingWebhook(hook)
+	newHook, resp, err := c.API.CreateIncomingWebhook(context.Background(), hook)
 	if err != nil {
 		return fmt.Errorf("failed to create webhook: %v", err)
 	}
@@ -373,7 +373,7 @@ func (c *Client) CreateFlightWebhook(channelID string) error {
 // SetupWebhooks sets up webhooks for the apps
 func (c *Client) SetupWebhooks() error {
 	// Get the channel ID for off-topic in the test team
-	teams, resp, err := c.API.GetAllTeams("", 0, 100)
+	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
 	if err != nil {
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
@@ -390,7 +390,7 @@ func (c *Client) SetupWebhooks() error {
 		return fmt.Errorf("team '%s' not found", c.TeamName)
 	}
 
-	channels, resp, err := c.API.GetPublicChannelsForTeam(teamID, 0, 100, "")
+	channels, resp, err := c.API.GetPublicChannelsForTeam(context.Background(), teamID, 0, 100, "")
 	if err != nil {
 		return fmt.Errorf("failed to get channels: %v", err)
 	}
