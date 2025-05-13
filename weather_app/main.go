@@ -58,13 +58,13 @@ type MattermostResponse struct {
 
 // Subscription represents a weather subscription for a channel
 type Subscription struct {
-	ID               string        `json:"id"`               // Unique identifier for the subscription
-	Location         string        `json:"location"`         // Location to get weather for
-	ChannelID        string        `json:"channel_id"`       // Channel to post updates to
-	UserID           string        `json:"user_id"`          // User who created the subscription
-	UpdateFrequency  time.Duration `json:"update_frequency"` // How often to update
-	LastUpdated      time.Time     `json:"last_updated"`     // When the subscription was last updated
-	StopChan         chan struct{} `json:"-"`                // Channel to signal stopping the subscription (not serialized)
+	ID              string        `json:"id"`               // Unique identifier for the subscription
+	Location        string        `json:"location"`         // Location to get weather for
+	ChannelID       string        `json:"channel_id"`       // Channel to post updates to
+	UserID          string        `json:"user_id"`          // User who created the subscription
+	UpdateFrequency time.Duration `json:"update_frequency"` // How often to update
+	LastUpdated     time.Time     `json:"last_updated"`     // When the subscription was last updated
+	StopChan        chan struct{} `json:"-"`                // Channel to signal stopping the subscription (not serialized)
 }
 
 // SubscriptionManager manages all active subscriptions
@@ -80,12 +80,12 @@ func NewSubscriptionManager(filePath string) *SubscriptionManager {
 		Subscriptions: make(map[string]*Subscription),
 		FilePath:      filePath,
 	}
-	
+
 	// Load existing subscriptions from file
 	if err := sm.LoadFromFile(); err != nil {
 		log.Printf("Failed to load subscriptions from file: %v", err)
 	}
-	
+
 	return sm
 }
 
@@ -93,24 +93,24 @@ func NewSubscriptionManager(filePath string) *SubscriptionManager {
 func (sm *SubscriptionManager) SaveToFile() error {
 	sm.Mutex.RLock()
 	defer sm.Mutex.RUnlock()
-	
+
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(sm.FilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %v", err)
 	}
-	
+
 	// Marshal to JSON
 	data, err := json.MarshalIndent(sm, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal subscriptions: %v", err)
 	}
-	
+
 	// Write to file
 	if err := os.WriteFile(sm.FilePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write subscriptions file: %v", err)
 	}
-	
+
 	log.Printf("Saved %d subscriptions to %s", len(sm.Subscriptions), sm.FilePath)
 	return nil
 }
@@ -119,33 +119,33 @@ func (sm *SubscriptionManager) SaveToFile() error {
 func (sm *SubscriptionManager) LoadFromFile() error {
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
-	
+
 	// Check if file exists
 	if _, err := os.Stat(sm.FilePath); os.IsNotExist(err) {
 		log.Printf("Subscriptions file does not exist at %s", sm.FilePath)
 		return nil // Not an error, just no file yet
 	}
-	
+
 	// Read file
 	data, err := os.ReadFile(sm.FilePath)
 	if err != nil {
 		return fmt.Errorf("failed to read subscriptions file: %v", err)
 	}
-	
+
 	// Unmarshal JSON
 	var loadedManager SubscriptionManager
 	if err := json.Unmarshal(data, &loadedManager); err != nil {
 		return fmt.Errorf("failed to unmarshal subscriptions: %v", err)
 	}
-	
+
 	// Copy subscriptions to current manager
 	sm.Subscriptions = loadedManager.Subscriptions
-	
+
 	// Initialize StopChan for each subscription
 	for _, sub := range sm.Subscriptions {
 		sub.StopChan = make(chan struct{})
 	}
-	
+
 	log.Printf("Loaded %d subscriptions from %s", len(sm.Subscriptions), sm.FilePath)
 	return nil
 }
@@ -155,7 +155,7 @@ func (sm *SubscriptionManager) AddSubscription(sub *Subscription) {
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
 	sm.Subscriptions[sub.ID] = sub
-	
+
 	// Save to file after adding
 	go sm.SaveToFile()
 }
@@ -164,7 +164,7 @@ func (sm *SubscriptionManager) AddSubscription(sub *Subscription) {
 func (sm *SubscriptionManager) RemoveSubscription(id string) bool {
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
-	
+
 	sub, exists := sm.Subscriptions[id]
 	if exists {
 		// Signal the subscription to stop
@@ -190,7 +190,7 @@ func (sm *SubscriptionManager) GetSubscription(id string) (*Subscription, bool) 
 func (sm *SubscriptionManager) GetSubscriptionsForChannel(channelID string) []*Subscription {
 	sm.Mutex.RLock()
 	defer sm.Mutex.RUnlock()
-	
+
 	var subs []*Subscription
 	for _, sub := range sm.Subscriptions {
 		if sub.ChannelID == channelID {
@@ -204,7 +204,7 @@ func (sm *SubscriptionManager) GetSubscriptionsForChannel(channelID string) []*S
 func (sm *SubscriptionManager) GetSubscriptionsForUser(userID string) []*Subscription {
 	sm.Mutex.RLock()
 	defer sm.Mutex.RUnlock()
-	
+
 	var subs []*Subscription
 	for _, sub := range sm.Subscriptions {
 		if sub.UserID == userID {
@@ -249,9 +249,9 @@ func main() {
 		apiKey = "c5AeEo7A30nZmTHZkCs0fQXT8JcUFWJC" // Fallback to default if not set
 	}
 	log.Printf("Using API key: %s", apiKey)
-	
+
 	// Create subscription manager with file path
-	subscriptionsFile := "./weather_app/subscriptions.json"
+	subscriptionsFile := "./subscriptions.json"
 	subscriptionManager := NewSubscriptionManager(subscriptionsFile)
 	log.Printf("Using subscriptions file: %s", subscriptionsFile)
 
@@ -287,7 +287,7 @@ func main() {
 	http.HandleFunc("/incoming", func(w http.ResponseWriter, r *http.Request) {
 		// Set content type header early
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		if r.Method != http.MethodPost {
 			log.Printf("Method not allowed: %s", r.Method)
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -301,43 +301,43 @@ func main() {
 			http.Error(w, "Error reading request body", http.StatusBadRequest)
 			return
 		}
-		
+
 		// Log the raw request body
 		log.Printf("Received webhook payload: %s", string(bodyBytes))
-		
+
 		// Create a new reader with the same body data for parsing the form
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-		
+
 		// Parse the form data
 		if err := r.ParseForm(); err != nil {
 			log.Printf("Error parsing form data: %v", err)
 			http.Error(w, "Error parsing form data", http.StatusBadRequest)
 			return
 		}
-		
+
 		// Log all form values for debugging
 		log.Printf("Parsed form data:")
 		for key, values := range r.Form {
 			log.Printf("  %s: %v", key, values)
 		}
-		
+
 		// Extract user information
 		userID := r.FormValue("user_id")
 		userName := r.FormValue("user_name")
 		channelName := r.FormValue("channel_name")
 		channelID := r.FormValue("channel_id")
 		text := r.FormValue("text")
-		
-		log.Printf("Processing weather request from user: %s (%s) in channel: %s (%s) with text: %s", 
+
+		log.Printf("Processing weather request from user: %s (%s) in channel: %s (%s) with text: %s",
 			userName, userID, channelName, channelID, text)
-		
+
 		// Parse command flags
 		var location string
 		var subscribe bool
 		var unsubscribe bool
 		var updateFrequency time.Duration
 		var subscriptionID string
-		
+
 		// Split text into words
 		words := strings.Fields(text)
 		for i := 0; i < len(words); i++ {
@@ -380,12 +380,12 @@ func main() {
 				}
 			}
 		}
-		
+
 		// If no flags were used, treat the entire text as location
 		if location == "" && !strings.Contains(text, "--") {
 			location = text
 		}
-		
+
 		// Handle unsubscribe request
 		if unsubscribe {
 			if subscriptionID == "" {
@@ -400,16 +400,16 @@ func main() {
 					json.NewEncoder(w).Encode(response)
 					return
 				}
-				
+
 				// Build list of subscriptions
 				var subList strings.Builder
 				subList.WriteString("Your active weather subscriptions:\n\n")
 				for _, sub := range subs {
-					subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %s\n\n", 
+					subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %s\n\n",
 						sub.ID, sub.Location, sub.UpdateFrequency))
 				}
 				subList.WriteString("To unsubscribe, use: `/weather --unsubscribe --id SUBSCRIPTION_ID`")
-				
+
 				response := MattermostResponse{
 					Text:         subList.String(),
 					ResponseType: "ephemeral",
@@ -418,7 +418,7 @@ func main() {
 				json.NewEncoder(w).Encode(response)
 				return
 			}
-			
+
 			// Remove the subscription
 			if subscriptionManager.RemoveSubscription(subscriptionID) {
 				response := MattermostResponse{
@@ -437,7 +437,7 @@ func main() {
 			}
 			return
 		}
-		
+
 		// Check if location is provided for regular weather or subscription
 		if location == "" && (subscribe || !unsubscribe) {
 			log.Printf("No location provided, sending help message")
@@ -449,14 +449,14 @@ func main() {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		// Handle subscription request
 		if subscribe {
 			// Set default update frequency if not provided
 			if updateFrequency == 0 {
 				updateFrequency = 1 * time.Hour // Default to hourly updates
 			}
-			
+
 			// Validate minimum update frequency
 			if updateFrequency < 30*time.Second {
 				response := MattermostResponse{
@@ -467,10 +467,10 @@ func main() {
 				json.NewEncoder(w).Encode(response)
 				return
 			}
-			
+
 			// Create a unique ID for the subscription
 			subID := fmt.Sprintf("sub_%d", time.Now().UnixNano())
-			
+
 			// Create the subscription
 			subscription := &Subscription{
 				ID:              subID,
@@ -481,11 +481,11 @@ func main() {
 				LastUpdated:     time.Now(),
 				StopChan:        make(chan struct{}),
 			}
-			
+
 			// Add the subscription
 			subscriptionManager.AddSubscription(subscription)
 			log.Printf("Added new subscription with ID: %s", subID)
-			
+
 			// Start a goroutine to handle the subscription
 			go func(sub *Subscription) {
 				// Get initial weather data
@@ -494,15 +494,15 @@ func main() {
 					log.Printf("Error fetching initial weather data for subscription %s: %v", sub.ID, err)
 					return
 				}
-				
+
 				// Send initial weather update
 				weatherText := formatWeatherResponse(weatherData)
 				sendMattermostMessage(sub.ChannelID, weatherText)
-				
+
 				// Create a ticker for periodic updates
 				ticker := time.NewTicker(sub.UpdateFrequency)
 				defer ticker.Stop()
-				
+
 				for {
 					select {
 					case <-ticker.C:
@@ -512,14 +512,14 @@ func main() {
 							log.Printf("Error fetching weather data for subscription %s: %v", sub.ID, err)
 							continue
 						}
-						
+
 						// Send weather update
 						weatherText := formatWeatherResponse(weatherData)
 						sendMattermostMessage(sub.ChannelID, weatherText)
-						
+
 						// Update last updated time
 						sub.LastUpdated = time.Now()
-						
+
 						// Save updated time to file
 						subscriptionManager.SaveToFile()
 					case <-sub.StopChan:
@@ -528,7 +528,7 @@ func main() {
 					}
 				}
 			}(subscription)
-			
+
 			// Send confirmation
 			response := MattermostResponse{
 				Text:         fmt.Sprintf("Successfully subscribed to weather updates for %s every %s. Subscription ID: `%s`", location, updateFrequency, subID),
@@ -538,7 +538,7 @@ func main() {
 			json.NewEncoder(w).Encode(response)
 			return
 		}
-		
+
 		// Handle regular weather request
 		weatherData, err := getWeatherData(location, apiKey)
 		if err != nil {
@@ -566,7 +566,7 @@ func main() {
 			http.Error(w, "Error encoding response", http.StatusInternalServerError)
 			return
 		}
-		
+
 		log.Printf("Successfully sent weather response to channel: %s (%s)", channelName, channelID)
 	})
 
@@ -577,54 +577,54 @@ func main() {
 			log.Fatalf("Failed to create static directory: %v", err)
 		}
 	}
-	
+
 	// Serve static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-	
+
 	// Special handler for bot.png
 	http.HandleFunc("/bot.png", func(w http.ResponseWriter, r *http.Request) {
 		// Path to the bot.png file
 		botImagePath := filepath.Join(staticDir, "bot.png")
-		
+
 		// Check if the file exists
 		if _, err := os.Stat(botImagePath); os.IsNotExist(err) {
 			log.Printf("bot.png not found at %s", botImagePath)
 			http.Error(w, "Image not found", http.StatusNotFound)
 			return
 		}
-		
+
 		// Set the content type
 		w.Header().Set("Content-Type", "image/png")
-		
+
 		// Serve the file
 		http.ServeFile(w, r, botImagePath)
 	})
-	
+
 	// Start active subscriptions
 	log.Printf("Starting %d saved subscriptions...", len(subscriptionManager.Subscriptions))
 	for _, sub := range subscriptionManager.Subscriptions {
 		// Initialize the stop channel
 		sub.StopChan = make(chan struct{})
-		
+
 		// Start the subscription in a goroutine
 		go func(sub *Subscription) {
 			log.Printf("Starting saved subscription %s for location %s", sub.ID, sub.Location)
-			
+
 			// Get initial weather data
 			weatherData, err := getWeatherData(sub.Location, apiKey)
 			if err != nil {
 				log.Printf("Error fetching initial weather data for subscription %s: %v", sub.ID, err)
 				return
 			}
-			
+
 			// Send initial weather update
 			weatherText := formatWeatherResponse(weatherData)
 			sendMattermostMessage(sub.ChannelID, weatherText)
-			
+
 			// Create a ticker for periodic updates
 			ticker := time.NewTicker(sub.UpdateFrequency)
 			defer ticker.Stop()
-			
+
 			for {
 				select {
 				case <-ticker.C:
@@ -634,14 +634,14 @@ func main() {
 						log.Printf("Error fetching weather data for subscription %s: %v", sub.ID, err)
 						continue
 					}
-					
+
 					// Send weather update
 					weatherText := formatWeatherResponse(weatherData)
 					sendMattermostMessage(sub.ChannelID, weatherText)
-					
+
 					// Update last updated time
 					sub.LastUpdated = time.Now()
-					
+
 					// Save updated time to file
 					subscriptionManager.SaveToFile()
 				case <-sub.StopChan:
@@ -651,10 +651,10 @@ func main() {
 			}
 		}(sub)
 	}
-	
+
 	// Set up graceful shutdown to save subscriptions
 	setupGracefulShutdown(subscriptionManager)
-	
+
 	// Start the server
 	port := "8085"
 	serverURL := fmt.Sprintf("http://0.0.0.0:%s", port)
@@ -669,7 +669,7 @@ func main() {
 func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 	// Trim any leading/trailing whitespace from location
 	location = strings.TrimSpace(location)
-	
+
 	// Construct the API URL with proper URL encoding
 	encodedLocation := url.QueryEscape(location)
 	apiURL := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", encodedLocation, apiKey)
@@ -727,32 +727,32 @@ func sendMattermostMessage(channelID, text string) error {
 		ResponseType: "in_channel",
 		ChannelID:    channelID,
 	}
-	
+
 	// Convert to JSON
 	payload, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("error marshaling message: %v", err)
 	}
-	
+
 	// Get the Mattermost webhook URL from environment variable
 	webhookURL := os.Getenv("MATTERMOST_WEBHOOK_URL")
 	if webhookURL == "" {
 		return fmt.Errorf("MATTERMOST_WEBHOOK_URL environment variable not set")
 	}
-	
+
 	// Send the request
 	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("error sending message: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("error from Mattermost: status %d, body: %s", resp.StatusCode, string(body))
 	}
-	
+
 	log.Printf("Successfully sent message to channel %s", channelID)
 	return nil
 }
@@ -761,7 +761,7 @@ func sendMattermostMessage(channelID, text string) error {
 func setupGracefulShutdown(sm *SubscriptionManager) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	
+
 	go func() {
 		<-c
 		log.Println("Received shutdown signal, saving subscriptions...")
