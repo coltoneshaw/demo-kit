@@ -148,8 +148,8 @@ func main() {
 
 	// Start the server
 	port := "8085"
-	log.Printf("Server starting on port %s...", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	log.Printf("Server starting on port %s (listening on all interfaces)...", port)
+	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
