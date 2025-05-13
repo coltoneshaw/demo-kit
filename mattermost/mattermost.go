@@ -107,6 +107,7 @@ func (c *Client) CreateUsers() error {
 		if err != nil {
 			return fmt.Errorf("failed to create sysadmin: %v, response status code: %v", err, resp.StatusCode)
 		}
+		fmt.Println("✅ Successfully created system admin user 'sysadmin'")
 
 	} else {
 		fmt.Println("User 'sysadmin' already exists")
@@ -125,6 +126,7 @@ func (c *Client) CreateUsers() error {
 		if err != nil {
 			return fmt.Errorf("failed to create user-1: %v, response status code: %v", err, resp.StatusCode)
 		}
+		fmt.Println("✅ Successfully created regular user 'user-1'")
 	} else {
 		fmt.Println("User 'user-1' already exists")
 	}
@@ -168,6 +170,7 @@ func (c *Client) CreateTeam() error {
 		if err != nil {
 			return fmt.Errorf("failed to create team: %v, response status code: %v", err, createResp.StatusCode)
 		}
+		fmt.Printf("✅ Successfully created team '%s'\n", c.TeamName)
 	} else {
 		fmt.Printf("Team '%s' already exists\n", c.TeamName)
 	}
@@ -191,6 +194,7 @@ func (c *Client) CreateTeam() error {
 				}
 				return fmt.Errorf("failed to add user to team: %v", err)
 			}
+			fmt.Printf("✅ Added user '%s' to team '%s'\n", user.Username, c.TeamName)
 		}
 	}
 
@@ -245,7 +249,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 				fmt.Printf("Warning: Failed to create flights command: %v\n", err)
 			}
 		} else {
-			fmt.Println("/flights command created successfully")
+			fmt.Println("✅ /flights command created successfully")
 		}
 	} else {
 		fmt.Println("/flights command already exists")
@@ -274,7 +278,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 				fmt.Printf("Warning: Failed to create weather command: %v\n", err)
 			}
 		} else {
-			fmt.Println("/weather command created successfully")
+			fmt.Println("✅ /weather command created successfully")
 		}
 	} else {
 		fmt.Println("/weather command already exists")
@@ -285,7 +289,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 
 // UpdateWebhookConfig updates the webhook configuration in the env file
 func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerName string) error {
-	fmt.Printf("Created webhook with ID: %s for %s\n", webhookID, appName)
+	fmt.Printf("✅ Created webhook with ID: %s for %s\n", webhookID, appName)
 
 	// Update env_vars.env file with the webhook URL
 	webhookURL := fmt.Sprintf("http://mattermost:8065/hooks/%s", webhookID)
@@ -320,7 +324,7 @@ func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerNa
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to restart container: %v", err)
 	}
-	fmt.Printf("%s restarted successfully\n", appName)
+	fmt.Printf("✅ %s restarted successfully\n", appName)
 
 	return nil
 }
