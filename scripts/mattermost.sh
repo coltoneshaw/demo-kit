@@ -182,7 +182,7 @@ createFlightWebhook() {
 setupWebhooks() {
   # Get the channel ID for off-topic in the test team using channel search
   echo "Getting channel ID for off-topic in test team..."
-  CHANNEL_SEARCH=$(docker exec -it mattermost mmctl channel search off-topic --team test --local)
+  CHANNEL_SEARCH=$(docker exec -it mattermost mmctl channel search --team test off-topic --local)
   CHANNEL_ID=$(echo "$CHANNEL_SEARCH" | grep -o "Channel ID :[a-z0-9]*" | cut -d':' -f2 | tr -d ' ')
   
   if [ -n "$CHANNEL_ID" ]; then
