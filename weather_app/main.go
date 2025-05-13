@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 )
 
 // WeatherResponse represents the response from the Tomorrow.io API
@@ -164,7 +165,13 @@ func main() {
 		// Get location from text parameter, default to Wendell, NC
 		location := "27591 us" // Default to Wendell, NC
 		if text != "" {
-			location = text
+			// Check if text contains "--location" flag
+			if len(text) > 11 && text[:11] == "--location " {
+				location = text[11:] // Extract the location after "--location "
+				log.Printf("Extracted location from flag: %s", location)
+			} else {
+				location = text
+			}
 		}
 		
 		// Get weather data
@@ -208,6 +215,9 @@ func main() {
 
 // getWeatherData fetches weather data from the Tomorrow.io API
 func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
+	// Trim any leading/trailing whitespace from location
+	location = strings.TrimSpace(location)
+	
 	// Construct the API URL with proper URL encoding
 	encodedLocation := url.QueryEscape(location)
 	apiURL := fmt.Sprintf("https://api.tomorrow.io/v4/weather/realtime?location=%s&apikey=%s", encodedLocation, apiKey)
