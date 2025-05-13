@@ -117,7 +117,7 @@ createWeatherWebhook() {
       --user professor \
       --display-name weather \
       --description "Weather responses" \
-      --icon https://mattermost-kit.ngrok.io/bot.png \
+      --icon http://weather-app:8085/bot.png \
       --local)
     
     # Extract webhook ID using basic grep and sed instead of grep -P
