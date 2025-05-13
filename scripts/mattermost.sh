@@ -82,22 +82,33 @@ createTeam() {
 
 # Create slash commands
 createSlashCommands() {
-  # Check if /flights command exists
-  if ! docker exec -it mattermost mmctl command list --local | grep -q "/flights"; then
-    echo "Creating /flights slash command..."
-    docker exec -it mattermost mmctl command create test --title "Flight Departures" --description "Get flight departures" --trigger-word "flights" --url "http://flightaware-app:8086/webhook" --creator "sysadmin" --response-username "flight-bot" --autocomplete --local
-    echo "/flights command created"
-  else
+  # Check if commands exist by listing them
+  COMMANDS_LIST=$(docker exec -it mattermost mmctl command list --local)
+  
+  # Check for flights command
+  if echo "$COMMANDS_LIST" | grep -q "flights"; then
     echo "/flights command already exists"
+  else
+    echo "Creating /flights slash command..."
+    RESULT=$(docker exec -it mattermost mmctl command create test --title "Flight Departures" --description "Get flight departures" --trigger-word "flights" --url "http://flightaware-app:8086/webhook" --creator "sysadmin" --response-username "flight-bot" --autocomplete --local 2>&1)
+    if echo "$RESULT" | grep -q "Error"; then
+      echo "Warning: $RESULT"
+    else
+      echo "/flights command created successfully"
+    fi
   fi
   
-  # Check if /weather command exists
-  if ! docker exec -it mattermost mmctl command list --local | grep -q "/weather"; then
-    echo "Creating /weather slash command..."
-    docker exec -it mattermost mmctl command create test --title "Weather Information" --description "Get weather information" --trigger-word "weather" --url "http://weather-app:8085/webhook" --creator "sysadmin" --response-username "weather-bot" --autocomplete --local
-    echo "/weather command created"
-  else
+  # Check for weather command
+  if echo "$COMMANDS_LIST" | grep -q "weather"; then
     echo "/weather command already exists"
+  else
+    echo "Creating /weather slash command..."
+    RESULT=$(docker exec -it mattermost mmctl command create test --title "Weather Information" --description "Get weather information" --trigger-word "weather" --url "http://weather-app:8085/webhook" --creator "sysadmin" --response-username "weather-bot" --autocomplete --local 2>&1)
+    if echo "$RESULT" | grep -q "Error"; then
+      echo "Warning: $RESULT"
+    else
+      echo "/weather command created successfully"
+    fi
   fi
 }
 
