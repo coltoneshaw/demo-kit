@@ -417,16 +417,16 @@ func main() {
 			userName, userID, channelName, channelID, text)
 
 		// Check for simple commands first
-		if text == "--help" {
+		if text == "--help" || text == "help" {
 			helpText := "**Weather Bot Commands**\n\n" +
 				"**Basic Commands:**\n" +
 				"- `/weather <location>` - Get current weather for a location\n" +
-				"- `/weather help` - Show this help message\n" +
-				"- `/weather limits` - Show API usage limits and current usage\n\n" +
+				"- `/weather --help` - Show this help message\n" +
+				"- `/weather limits` - Show API usage limits and current usage\n" +
+				"- `/weather list` - List your active subscriptions\n\n" +
 				
 				"**Subscription Commands:**\n" +
 				"- `/weather --subscribe --location <location> --update-frequency <ms>` - Subscribe to weather updates\n" +
-				"- `/weather --unsubscribe` - List your active subscriptions\n" +
 				"- `/weather --unsubscribe --id <subscription_id>` - Unsubscribe from specific weather updates\n\n" +
 				
 				"**Parameters:**\n" +
@@ -436,6 +436,7 @@ func main() {
 				
 				"**Examples:**\n" +
 				"- `/weather London` - Get current weather for London\n" +
+				"- `/weather list` - Show your active subscriptions\n" +
 				"- `/weather --subscribe --location Tokyo --update-frequency 3600000` - Get hourly weather updates for Tokyo\n" +
 				"- `/weather --subscribe --location \"San Francisco\" --update-frequency 1h` - Get hourly weather updates for San Francisco"
 			
@@ -446,7 +447,37 @@ func main() {
 			}
 			json.NewEncoder(w).Encode(response)
 			return
-		} else if text == "limits" {
+		} else if text == "limits" || text == "list" {
+			if text == "list" {
+				// List subscriptions for the user
+				subs := subscriptionManager.GetSubscriptionsForUser(userID)
+				if len(subs) == 0 {
+					response := MattermostResponse{
+						Text:         "You don't have any active weather subscriptions.",
+						ResponseType: "ephemeral",
+						ChannelID:    channelID,
+					}
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+
+				// Build list of subscriptions
+				var subList strings.Builder
+				subList.WriteString("Your active weather subscriptions:\n\n")
+				for _, sub := range subs {
+					subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %d ms\n\n",
+						sub.ID, sub.Location, sub.UpdateFrequency))
+				}
+				subList.WriteString("To unsubscribe, use: `/weather --unsubscribe --id SUBSCRIPTION_ID`")
+
+				response := MattermostResponse{
+					Text:         subList.String(),
+					ResponseType: "ephemeral",
+					ChannelID:    channelID,
+				}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
 			hourlyUsage, dailyUsage := subscriptionManager.CalculateAPIUsage()
 			
 			limitsText := fmt.Sprintf("**Weather API Usage Limits**\n\n"+
@@ -530,8 +561,8 @@ func main() {
 		}
 
 		// If no flags were used, treat the entire text as location
-		// But don't treat "help" as a location
-		if location == "" && !strings.Contains(text, "--") && text != "help" {
+		// But don't treat special commands as a location
+		if location == "" && !strings.Contains(text, "--") && text != "help" && text != "list" {
 			location = text
 		} else if text == "help" {
 			// Handle help command
@@ -591,29 +622,9 @@ func main() {
 		// Handle unsubscribe request
 		if unsubscribe {
 			if subscriptionID == "" {
-				// List subscriptions for the user
-				subs := subscriptionManager.GetSubscriptionsForUser(userID)
-				if len(subs) == 0 {
-					response := MattermostResponse{
-						Text:         "You don't have any active weather subscriptions.",
-						ResponseType: "ephemeral",
-						ChannelID:    channelID,
-					}
-					json.NewEncoder(w).Encode(response)
-					return
-				}
-
-				// Build list of subscriptions
-				var subList strings.Builder
-				subList.WriteString("Your active weather subscriptions:\n\n")
-				for _, sub := range subs {
-					subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %d ms\n\n",
-						sub.ID, sub.Location, sub.UpdateFrequency))
-				}
-				subList.WriteString("To unsubscribe, use: `/weather --unsubscribe --id SUBSCRIPTION_ID`")
-
+				// For backward compatibility, show the list of subscriptions
 				response := MattermostResponse{
-					Text:         subList.String(),
+					Text:         "Please use `/weather list` to see your subscriptions or specify an ID with `--id` to unsubscribe.",
 					ResponseType: "ephemeral",
 					ChannelID:    channelID,
 				}
