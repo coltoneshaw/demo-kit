@@ -207,8 +207,8 @@ setupWebhooks() {
     if [ -n "$WEATHER_WEBHOOK_URL" ] && [ "$WEATHER_WEBHOOK_URL" != "" ]; then
       echo "Weather webhook URL already exists in env_vars.env: $WEATHER_WEBHOOK_URL"
       
-      # Verify the webhook still exists in Mattermost
-      WEBHOOK_ID=$(echo "$WEATHER_WEBHOOK_URL" | grep -o "[a-z0-9]*$")
+      # Extract webhook ID from URL
+      WEBHOOK_ID=$(echo "$WEATHER_WEBHOOK_URL" | grep -o "[a-z0-9]\{24,\}$")
       if ! echo "$WEBHOOKS_LIST" | grep -q "$WEBHOOK_ID"; then
         echo "Weather webhook no longer exists in Mattermost, recreating..."
         createWeatherWebhook "$CHANNEL_ID"
@@ -242,8 +242,8 @@ setupWebhooks() {
     if [ -n "$FLIGHT_WEBHOOK_URL" ] && [ "$FLIGHT_WEBHOOK_URL" != "" ]; then
       echo "Flight webhook URL already exists in env_vars.env: $FLIGHT_WEBHOOK_URL"
       
-      # Verify the webhook still exists in Mattermost
-      WEBHOOK_ID=$(echo "$FLIGHT_WEBHOOK_URL" | grep -o "[a-z0-9]*$")
+      # Extract webhook ID from URL
+      WEBHOOK_ID=$(echo "$FLIGHT_WEBHOOK_URL" | grep -o "[a-z0-9]\{24,\}$")
       if ! echo "$WEBHOOKS_LIST" | grep -q "$WEBHOOK_ID"; then
         echo "Flight webhook no longer exists in Mattermost, recreating..."
         createFlightWebhook "$CHANNEL_ID"
