@@ -24,6 +24,7 @@ run:
 	@make setup-mattermost
 	@make run-ai
 	@make run-rtcd
+	@make run-integrations
 	@make echo-logins
 
 run-ai:
@@ -42,6 +43,10 @@ run-ai:
 run-core:
 	@echo "Starting the core services... hang in there."
 	@docker-compose up -d postgres openldap prometheus grafana elasticsearch mattermost keycloak
+
+run-integrations:
+	@echo "Starting the integrations..."
+	@docker-compose up -d weather-app
 
 run-rtcd:
 	@echo "Starting RTCD..."

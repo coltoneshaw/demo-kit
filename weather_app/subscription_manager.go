@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 // SubscriptionManager manages all active subscriptions
@@ -57,7 +56,7 @@ func (sm *SubscriptionManager) SaveToFile() error {
 	if err := os.WriteFile(sm.FilePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write subscriptions file: %v", err)
 	}
-	
+
 	// Only log during initial load or when explicitly requested
 	if len(sm.Subscriptions) > 0 && os.Getenv("DEBUG") == "true" {
 		log.Printf("Saved %d subscriptions to %s", len(sm.Subscriptions), sm.FilePath)
@@ -168,7 +167,7 @@ func (sm *SubscriptionManager) GetSubscriptionsForUser(userID string) []*Subscri
 func (sm *SubscriptionManager) CalculateAPIUsage() (hourlyUsage, dailyUsage int) {
 	sm.Mutex.RLock()
 	defer sm.Mutex.RUnlock()
-	
+
 	for _, sub := range sm.Subscriptions {
 		// Calculate how many requests this subscription makes per hour
 		// (3600000 milliseconds in an hour)
@@ -177,7 +176,7 @@ func (sm *SubscriptionManager) CalculateAPIUsage() (hourlyUsage, dailyUsage int)
 			requestsPerHour = 1 // Minimum 1 request per hour
 		}
 		hourlyUsage += int(requestsPerHour)
-		
+
 		// Calculate how many requests this subscription makes per day
 		// (86400000 milliseconds in a day)
 		requestsPerDay := 86400000 / sub.UpdateFrequency
@@ -186,7 +185,7 @@ func (sm *SubscriptionManager) CalculateAPIUsage() (hourlyUsage, dailyUsage int)
 		}
 		dailyUsage += int(requestsPerDay)
 	}
-	
+
 	return hourlyUsage, dailyUsage
 }
 
@@ -194,30 +193,30 @@ func (sm *SubscriptionManager) CalculateAPIUsage() (hourlyUsage, dailyUsage int)
 func (sm *SubscriptionManager) CheckSubscriptionLimits(updateFrequency int64) (bool, string) {
 	// Calculate current usage
 	currentHourlyUsage, currentDailyUsage := sm.CalculateAPIUsage()
-	
+
 	// Calculate new subscription's usage
 	newHourlyUsage := 3600000 / updateFrequency
 	if newHourlyUsage < 1 {
 		newHourlyUsage = 1
 	}
-	
+
 	newDailyUsage := 86400000 / updateFrequency
 	if newDailyUsage < 1 {
 		newDailyUsage = 1
 	}
-	
+
 	// Check if adding this subscription would exceed limits
-	if currentHourlyUsage + int(newHourlyUsage) > sm.HourlyLimit {
+	if currentHourlyUsage+int(newHourlyUsage) > sm.HourlyLimit {
 		return false, fmt.Sprintf(
 			"Adding this subscription would exceed the hourly API limit of %d requests. Current usage: %d, New subscription would add: %d requests per hour.",
 			sm.HourlyLimit, currentHourlyUsage, newHourlyUsage)
 	}
-	
-	if currentDailyUsage + int(newDailyUsage) > sm.DailyLimit {
+
+	if currentDailyUsage+int(newDailyUsage) > sm.DailyLimit {
 		return false, fmt.Sprintf(
 			"Adding this subscription would exceed the daily API limit of %d requests. Current usage: %d, New subscription would add: %d requests per day.",
 			sm.DailyLimit, currentDailyUsage, newDailyUsage)
 	}
-	
+
 	return true, ""
 }

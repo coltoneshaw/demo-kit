@@ -19,8 +19,8 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
+# Install ca-certificates for HTTPS requests and Docker client
+RUN apk --no-cache add ca-certificates docker-cli
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/weather-app .
