@@ -70,73 +70,54 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the request body
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Printf("Error reading request body: %v", err)
-		http.Error(w, "Error reading request body", http.StatusBadRequest)
+	// Parse the form data (Mattermost sends slash commands as form data)
+	if err := r.ParseForm(); err != nil {
+		log.Printf("Error parsing form data: %v", err)
+		http.Error(w, "Invalid request format", http.StatusBadRequest)
 		return
 	}
 	
-	// Log the raw payload for debugging
-	log.Printf("Received webhook payload: %s", string(body))
+	// Log the form data for debugging
+	log.Printf("Received webhook form data: %v", r.Form)
 	
-	// Try to parse as Mattermost payload
-	var payload MattermostPayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		// If standard parsing fails, try to handle slash command format
-		// Slash commands come as form data
-		if err := r.ParseForm(); err != nil {
-			log.Printf("Error parsing form data: %v", err)
-			http.Error(w, "Invalid request format", http.StatusBadRequest)
+	// Extract values from form data
+	text := r.FormValue("text")
+	channelID := r.FormValue("channel_id")
+	userID := r.FormValue("user_id")
+	command := r.FormValue("command")
+	
+	log.Printf("Command: %s, Text: %s, ChannelID: %s, UserID: %s", command, text, channelID, userID)
+	
+	if channelID == "" {
+		log.Printf("Missing channel_id field")
+		http.Error(w, "Missing channel_id field", http.StatusBadRequest)
+		return
+	}
+	
+	// If this is the /flights command
+	if command == "/flights" {
+		// If text is empty or "help", show help
+		if text == "" || text == "help" {
+			sendHelpResponse(w, channelID)
 			return
 		}
 		
-		// Extract values from form data
-		text := r.FormValue("text")
-		channelID := r.FormValue("channel_id")
-		userID := r.FormValue("user_id")
-		
-		if text == "" || channelID == "" {
-			log.Printf("Missing required form fields")
-			http.Error(w, "Missing required fields", http.StatusBadRequest)
-			return
-		}
-		
-		// Process the command
+		// Parse the command arguments
 		args := parseCommand(text)
+		
+		// Check if this is a departures command
 		if len(args) >= 1 && args[0] == "departures" {
 			handleDeparturesCommand(w, args[1:], channelID, userID)
 			return
 		}
 		
-		// Unknown command
-		sendHelpResponse(w, channelID)
-		return
-	}
-	
-	// If we got here, we successfully parsed the JSON payload
-	// Extract command and arguments
-	text := payload.Text
-	channelID := payload.Channel
-	userID := payload.UserID
-
-	// Parse the command
-	args := parseCommand(text)
-
-	// Check if this is a flights command
-	if len(args) >= 2 && args[0] == "/flights" && args[1] == "departures" {
-		handleDeparturesCommand(w, args[2:], channelID, userID)
+		// Unknown subcommand
+		sendErrorResponse(w, channelID, fmt.Sprintf("Unknown subcommand: %s. Use `/flights help` for available commands.", text))
 		return
 	}
 
 	// If we get here, it's an unknown command
-	response := MattermostResponse{
-		Text:         "Unknown command. Use `/flights departures --airport [code] --start [unix_time] --end [unix_time]`",
-		ResponseType: "ephemeral",
-		ChannelID:    channelID,
-	}
-	json.NewEncoder(w).Encode(response)
+	sendHelpResponse(w, channelID)
 }
 
 func handleDeparturesCommand(w http.ResponseWriter, args []string, channelID, userID string) {
@@ -219,10 +200,12 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 	helpText := "**Flight Departures Bot Commands**\n\n" +
 		"- `/flights departures --airport [code]` - Get departures from an airport (last 24 hours)\n" +
 		"- `/flights departures --airport [code] --start [unix_time] --end [unix_time]` - Get departures for a specific time range\n" +
-		"- `/flights departures --help` - Show this help message\n\n" +
+		"- `/flights help` - Show this help message\n\n" +
 		"**Examples:**\n" +
 		"- `/flights departures --airport KSFO` - Get departures from San Francisco International\n" +
-		"- `/flights departures --airport EGLL --start 1714521600 --end 1714608000` - Get departures from London Heathrow for a specific day\n"
+		"- `/flights departures --airport EGLL --start 1714521600 --end 1714608000` - Get departures from London Heathrow for a specific day\n\n" +
+		"**Current Unix Time:** " + fmt.Sprintf("%d", time.Now().Unix()) + "\n" +
+		"**24 Hours Ago:** " + fmt.Sprintf("%d", time.Now().Add(-24*time.Hour).Unix())
 
 	response := MattermostResponse{
 		Text:         helpText,
