@@ -53,7 +53,7 @@ func getDepartureFlights(airport string, start, end int64) (*DepartureFlights, e
 	return result, nil
 }
 
-// formatFlightResponse formats flight data into a readable message
+// formatFlightResponse formats flight data into a readable markdown table
 func formatFlightResponse(flights *DepartureFlights, airport string, start, end int64) string {
 	if len(flights.Flights) == 0 {
 		return fmt.Sprintf("No departures found from %s in the specified time range.", airport)
@@ -68,6 +68,10 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 	sb.WriteString(fmt.Sprintf("**Departures from %s**\n", airport))
 	sb.WriteString(fmt.Sprintf("Time range: %s to %s\n\n", startTime, endTime))
 
+	// Create markdown table header
+	sb.WriteString("| Flight | Departure Time | Destination | Duration |\n")
+	sb.WriteString("|--------|---------------|-------------|----------|\n")
+
 	// Limit to 20 flights to avoid message size limits
 	maxFlights := 20
 	if len(flights.Flights) < maxFlights {
@@ -81,11 +85,8 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 		// Clean up callsign (remove trailing spaces)
 		callsign := strings.TrimSpace(flight.Callsign)
 
-		sb.WriteString(fmt.Sprintf("- **%s**: Departed at %s", callsign, departureTime))
-
-		// No need to convert departure airport code here since we're not using it in the output
-
-		// Add destination if available
+		// Get destination if available
+		destination := "-"
 		if flight.EstArrivalAirport != "" {
 			destinationCode := flight.EstArrivalAirport
 			// Try to convert ICAO code to more recognizable 3-letter code if possible
@@ -95,17 +96,19 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 					break
 				}
 			}
-			sb.WriteString(fmt.Sprintf(" to %s", destinationCode))
+			destination = destinationCode
 		}
 
-		// Add flight duration if available
+		// Get flight duration if available
+		duration := "-"
 		if flight.LastSeen > flight.FirstSeen {
-			duration := flight.LastSeen - flight.FirstSeen
-			minutes := duration / 60
-			sb.WriteString(fmt.Sprintf(", Duration: %d min", minutes))
+			durationMinutes := (flight.LastSeen - flight.FirstSeen) / 60
+			duration = fmt.Sprintf("%d min", durationMinutes)
 		}
 
-		sb.WriteString("\n")
+		// Add row to table
+		sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s |\n", 
+			callsign, departureTime, destination, duration))
 	}
 
 	if len(flights.Flights) > maxFlights {
