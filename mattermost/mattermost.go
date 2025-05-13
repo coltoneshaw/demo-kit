@@ -99,7 +99,7 @@ func (c *Client) CreateUsers() error {
 			Password: "Testpassword123!",
 		}
 
-		createdUser, resp, err := c.API.CreateUser(sysadmin)
+		createdUser, resp, err := c.API.CreateUser(context.Background(), sysadmin)
 		if err != nil {
 			return fmt.Errorf("failed to create sysadmin: %v, response status code: %v", err, resp.StatusCode)
 		}
@@ -126,7 +126,7 @@ func (c *Client) CreateUsers() error {
 			Password: "Testpassword123!",
 		}
 
-		_, resp, err := c.API.CreateUser(user1)
+		_, resp, err := c.API.CreateUser(context.Background(), user1)
 		if err != nil {
 			return fmt.Errorf("failed to create user-1: %v, response status code: %v", err, resp.StatusCode)
 		}
