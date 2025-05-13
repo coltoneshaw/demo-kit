@@ -4,8 +4,8 @@ import (
 	"fmt"
 )
 
-// Logins prints login information for various services
-func Logins() {
+// LoginsCmdF prints login information for various services
+func LoginsCmdF() error {
 	fmt.Println("===========================================================")
 	fmt.Println()
 	fmt.Println("- Mattermost: http://localhost:8065 with the logins above if you ran setup")
@@ -17,4 +17,5 @@ func Logins() {
 	fmt.Println("- PostgreSQL  localhost:5432 with 'mmuser' / 'mmuser_password'")
 	fmt.Println()
 	fmt.Println("===========================================================")
+	return nil
 }

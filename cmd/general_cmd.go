@@ -16,8 +16,8 @@ var LoginsCmd = &cobra.Command{
 	Use:   "logins",
 	Short: "Display login information for services",
 	Long:  `Display login information for Mattermost, Keycloak, Grafana, and other services.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		Logins()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return LoginsCmdF()
 	},
 }
 

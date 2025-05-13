@@ -16,8 +16,8 @@ var RestoreCmd = &cobra.Command{
 	Use:   "restore",
 	Short: "Restore Keycloak from backup",
 	Long:  `Restore Keycloak data from a backup file if the data directory doesn't exist.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		Restore()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return RestoreCmdF()
 	},
 }
 
@@ -26,8 +26,8 @@ var BackupCmd = &cobra.Command{
 	Use:   "backup",
 	Short: "Backup Keycloak data",
 	Long:  `Create a backup of the Keycloak data directory.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		Backup()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return BackupCmdF()
 	},
 }
 

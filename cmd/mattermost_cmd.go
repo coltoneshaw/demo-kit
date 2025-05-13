@@ -16,8 +16,8 @@ var SetupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Set up Mattermost with test data",
 	Long:  `Configure Mattermost with test users, teams, and webhooks.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		Setup()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return SetupCmdF()
 	},
 }
 
@@ -26,8 +26,8 @@ var EchoLoginsCmd = &cobra.Command{
 	Use:   "echologins",
 	Short: "Display Mattermost login information",
 	Long:  `Display login credentials for Mattermost users.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		EchoLogins()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return EchoLoginsCmdF()
 	},
 }
 
