@@ -85,7 +85,7 @@ createSlashCommands() {
   # Check if /flights command exists
   if ! docker exec -it mattermost mmctl command list --local | grep -q "/flights"; then
     echo "Creating /flights slash command..."
-    docker exec -it mattermost mmctl command create --team test --trigger "flights" --url "http://flightaware-app:8086/webhook" --description "Get flight departures" --local
+    docker exec -it mattermost mmctl command create test --title "Flight Departures" --description "Get flight departures" --trigger-word "flights" --url "http://flightaware-app:8086/webhook" --creator "sysadmin" --response-username "flight-bot" --autocomplete --local
     echo "/flights command created"
   else
     echo "/flights command already exists"
@@ -94,7 +94,7 @@ createSlashCommands() {
   # Check if /weather command exists
   if ! docker exec -it mattermost mmctl command list --local | grep -q "/weather"; then
     echo "Creating /weather slash command..."
-    docker exec -it mattermost mmctl command create --team test --trigger "weather" --url "http://weather-app:8085/webhook" --description "Get weather information" --local
+    docker exec -it mattermost mmctl command create test --title "Weather Information" --description "Get weather information" --trigger-word "weather" --url "http://weather-app:8085/webhook" --creator "sysadmin" --response-username "weather-bot" --autocomplete --local
     echo "/weather command created"
   else
     echo "/weather command already exists"
