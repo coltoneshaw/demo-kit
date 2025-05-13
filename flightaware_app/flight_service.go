@@ -83,15 +83,7 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 
 		sb.WriteString(fmt.Sprintf("- **%s**: Departed at %s", callsign, departureTime))
 
-		// Add departure airport
-		departureCode := flight.EstDepartureAirport
-		// Try to convert ICAO code to more recognizable 3-letter code if possible
-		for code, icao := range AirportCodeMap {
-			if icao == flight.EstDepartureAirport {
-				departureCode = code
-				break
-			}
-		}
+		// No need to convert departure airport code here since we're not using it in the output
 
 		// Add destination if available
 		if flight.EstArrivalAirport != "" {
