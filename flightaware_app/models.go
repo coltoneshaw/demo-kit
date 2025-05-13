@@ -30,6 +30,14 @@ type DepartureFlights struct {
 	Flights  []Flight `json:"flights"`
 }
 
+// EnhancedFlight adds derived information to a flight
+type EnhancedFlight struct {
+	Flight       Flight
+	Airline      string
+	Country      string
+	AircraftType string
+}
+
 // MattermostPayload represents the incoming webhook payload from Mattermost
 type MattermostPayload struct {
 	Text       string `json:"text"`

@@ -69,8 +69,8 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 	sb.WriteString(fmt.Sprintf("Time range: %s to %s\n\n", startTime, endTime))
 
 	// Create markdown table header
-	sb.WriteString("| Flight | Departure Time | Destination | Duration |\n")
-	sb.WriteString("|--------|---------------|-------------|----------|\n")
+	sb.WriteString("| Flight | Airline | Departure Time | Destination | Duration |\n")
+	sb.WriteString("|--------|---------|---------------|-------------|----------|\n")
 
 	// Limit to 20 flights to avoid message size limits
 	maxFlights := 20
@@ -106,9 +106,15 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 			duration = fmt.Sprintf("%d min", durationMinutes)
 		}
 
+		// Get airline information
+		airlineName, country := GetAirlineInfo(callsign)
+		if airlineName == "" {
+			airlineName = "Unknown"
+		}
+		
 		// Add row to table
-		sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s |\n", 
-			callsign, departureTime, destination, duration))
+		sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s | %s |\n", 
+			callsign, airlineName, departureTime, destination, duration))
 	}
 
 	if len(flights.Flights) > maxFlights {
