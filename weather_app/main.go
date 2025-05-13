@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -62,7 +63,7 @@ type Subscription struct {
 	Location        string        `json:"location"`         // Location to get weather for
 	ChannelID       string        `json:"channel_id"`       // Channel to post updates to
 	UserID          string        `json:"user_id"`          // User who created the subscription
-	UpdateFrequency time.Duration `json:"update_frequency"` // How often to update
+	UpdateFrequency int64         `json:"update_frequency"` // How often to update (in milliseconds)
 	LastUpdated     time.Time     `json:"last_updated"`     // When the subscription was last updated
 	StopChan        chan struct{} `json:"-"`                // Channel to signal stopping the subscription (not serialized)
 }
@@ -362,17 +363,25 @@ func main() {
 				unsubscribe = true
 			case "--update-frequency":
 				if i+1 < len(words) {
-					var err error
-					updateFrequency, err = time.ParseDuration(words[i+1])
+					// Try to parse as milliseconds directly
+					msValue, err := strconv.ParseInt(words[i+1], 10, 64)
 					if err != nil {
-						log.Printf("Invalid update frequency: %s", words[i+1])
-						response := MattermostResponse{
-							Text:         fmt.Sprintf("Invalid update frequency: %s. Please use a valid duration like 30s, 5m, 1h", words[i+1]),
-							ResponseType: "ephemeral",
-							ChannelID:    channelID,
+						// If not a direct number, try to parse as duration and convert to milliseconds
+						duration, err := time.ParseDuration(words[i+1])
+						if err != nil {
+							log.Printf("Invalid update frequency: %s", words[i+1])
+							response := MattermostResponse{
+								Text:         fmt.Sprintf("Invalid update frequency: %s. Please use milliseconds (e.g., 60000 for 1 minute) or a valid duration like 30s, 5m, 1h", words[i+1]),
+								ResponseType: "ephemeral",
+								ChannelID:    channelID,
+							}
+							json.NewEncoder(w).Encode(response)
+							return
 						}
-						json.NewEncoder(w).Encode(response)
-						return
+						// Convert duration to milliseconds
+						updateFrequency = duration.Milliseconds()
+					} else {
+						updateFrequency = msValue
 					}
 					i++ // Skip the frequency value
 				}
@@ -457,13 +466,13 @@ func main() {
 		if subscribe {
 			// Set default update frequency if not provided
 			if updateFrequency == 0 {
-				updateFrequency = 1 * time.Hour // Default to hourly updates
+				updateFrequency = 3600000 // Default to hourly updates (3600000 ms = 1 hour)
 			}
 
-			// Validate minimum update frequency
-			if updateFrequency < 30*time.Second {
+			// Validate minimum update frequency (30 seconds = 30000 milliseconds)
+			if updateFrequency < 30000 {
 				response := MattermostResponse{
-					Text:         "Update frequency must be at least 30 seconds.",
+					Text:         "Update frequency must be at least 30000 milliseconds (30 seconds).",
 					ResponseType: "ephemeral",
 					ChannelID:    channelID,
 				}
@@ -502,8 +511,8 @@ func main() {
 				weatherText := formatWeatherResponse(weatherData)
 				sendMattermostMessage(sub.ChannelID, weatherText)
 
-				// Create a ticker for periodic updates
-				ticker := time.NewTicker(sub.UpdateFrequency)
+				// Create a ticker for periodic updates (convert milliseconds to duration)
+				ticker := time.NewTicker(time.Duration(sub.UpdateFrequency) * time.Millisecond)
 				defer ticker.Stop()
 
 				for {
@@ -536,7 +545,7 @@ func main() {
 
 			// Send confirmation
 			response := MattermostResponse{
-				Text:         fmt.Sprintf("Successfully subscribed to weather updates for %s every %s. Subscription ID: `%s`", location, updateFrequency, subID),
+				Text:         fmt.Sprintf("Successfully subscribed to weather updates for %s every %d ms. Subscription ID: `%s`", location, updateFrequency, subID),
 				ResponseType: "ephemeral",
 				ChannelID:    channelID,
 			}
@@ -626,8 +635,8 @@ func main() {
 			weatherText := formatWeatherResponse(weatherData)
 			sendMattermostMessage(sub.ChannelID, weatherText)
 
-			// Create a ticker for periodic updates
-			ticker := time.NewTicker(sub.UpdateFrequency)
+			// Create a ticker for periodic updates (convert milliseconds to duration)
+			ticker := time.NewTicker(time.Duration(sub.UpdateFrequency) * time.Millisecond)
 			defer ticker.Stop()
 
 			for {
