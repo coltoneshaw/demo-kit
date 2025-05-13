@@ -4,10 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"scripts/general"
-	"scripts/keycloak"
-	"scripts/mattermost"
 )
 
 func main() {
@@ -18,13 +14,13 @@ func main() {
 	}
 
 	command := os.Args[1]
-	
+
 	// Shift arguments to remove the first one
 	var subArgs []string
 	if len(os.Args) > 2 {
 		subArgs = os.Args[2:]
 	}
-	
+
 	switch strings.ToLower(command) {
 	case "general":
 		handleGeneralCommand(subArgs)
