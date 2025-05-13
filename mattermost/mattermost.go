@@ -198,12 +198,11 @@ func (c *Client) CreateTeam() error {
 		}
 	}
 
-	// Create slash commands
-	return c.CreateSlashCommands(team.Id)
+	return nil
 }
 
-// CreateSlashCommands creates slash commands for the apps
-func (c *Client) CreateSlashCommands(teamID string) error {
+// CreateSlashCommand creates a single slash command
+func (c *Client) CreateSlashCommand(teamID, trigger, url, displayName, description, username string) error {
 	// Get existing commands
 	commands, resp, err := c.API.ListCommands(context.Background(), teamID, true)
 	if err != nil {
@@ -213,75 +212,74 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 		return fmt.Errorf("failed to list commands: %v", err)
 	}
 
-	// Check for flights command
-	flightsExists := false
-	weatherExists := false
-
+	// Check if command already exists
 	for _, cmd := range commands {
-		if cmd.Trigger == "flights" {
-			flightsExists = true
-		}
-		if cmd.Trigger == "weather" {
-			weatherExists = true
+		if cmd.Trigger == trigger {
+			fmt.Printf("/%s command already exists\n", trigger)
+			return nil
 		}
 	}
 
-	// Create flights command if needed
-	if !flightsExists {
-		fmt.Println("Creating /flights slash command...")
-		flightsCmd := &model.Command{
-			TeamId:       teamID,
-			Trigger:      "flights",
-			Method:       "P",
-			URL:          c.FlightAppURL,
-			CreatorId:    "", // Will be set to current user
-			DisplayName:  "Flight Departures",
-			Description:  "Get flight departures",
-			AutoComplete: true,
-			Username:     "flight-bot",
-		}
-
-		createdCmd, resp, err := c.API.CreateCommand(context.Background(), flightsCmd)
-		if err != nil {
-			if resp != nil {
-				fmt.Printf("Warning: Failed to create flights command: %v, response status code: %v\n", err, resp.StatusCode)
-			} else {
-				fmt.Printf("Warning: Failed to create flights command: %v\n", err)
-			}
-		} else {
-			fmt.Printf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
-		}
-	} else {
-		fmt.Println("/flights command already exists")
+	// Create command
+	fmt.Printf("Creating /%s slash command...\n", trigger)
+	cmd := &model.Command{
+		TeamId:       teamID,
+		Trigger:      trigger,
+		Method:       "P",
+		URL:          url,
+		CreatorId:    "", // Will be set to current user
+		DisplayName:  displayName,
+		Description:  description,
+		AutoComplete: true,
+		Username:     username,
 	}
 
-	// Create weather command if needed
-	if !weatherExists {
-		fmt.Println("Creating /weather slash command...")
-		weatherCmd := &model.Command{
-			TeamId:       teamID,
-			Trigger:      "weather",
-			Method:       "P",
-			URL:          c.WeatherAppURL,
-			CreatorId:    "", // Will be set to current user
-			DisplayName:  "Weather Information",
-			Description:  "Get weather information",
-			AutoComplete: true,
-			Username:     "weather-bot",
+	createdCmd, resp, err := c.API.CreateCommand(context.Background(), cmd)
+	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to create %s command: %v, response status code: %v", trigger, err, resp.StatusCode)
 		}
+		return fmt.Errorf("failed to create %s command: %v", trigger, err)
+	}
+	
+	fmt.Printf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
+	return nil
+}
 
-		createdCmd, resp, err := c.API.CreateCommand(context.Background(), weatherCmd)
-		if err != nil {
-			if resp != nil {
-				fmt.Printf("Warning: Failed to create weather command: %v, response status code: %v\n", err, resp.StatusCode)
-			} else {
-				fmt.Printf("Warning: Failed to create weather command: %v\n", err)
-			}
-		} else {
-			fmt.Printf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
-		}
-	} else {
-		fmt.Println("/weather command already exists")
+// CreateFlightCommand creates the flights slash command
+func (c *Client) CreateFlightCommand(teamID string) error {
+	return c.CreateSlashCommand(
+		teamID,
+		"flights",
+		c.FlightAppURL,
+		"Flight Departures",
+		"Get flight departures",
+		"flight-bot",
+	)
+}
+
+// CreateWeatherCommand creates the weather slash command
+func (c *Client) CreateWeatherCommand(teamID string) error {
+	return c.CreateSlashCommand(
+		teamID,
+		"weather",
+		c.WeatherAppURL,
+		"Weather Information",
+		"Get weather information",
+		"weather-bot",
+	)
+}
+
+// CreateSlashCommands creates slash commands for the apps
+func (c *Client) CreateSlashCommands(teamID string) error {
+	// Create flights command
+	if err := c.CreateFlightCommand(teamID); err != nil {
+		fmt.Printf("Warning: Failed to create flights command: %v\n", err)
+	}
+
+	// Create weather command
+	if err := c.CreateWeatherCommand(teamID); err != nil {
+		fmt.Printf("Warning: Failed to create weather command: %v\n", err)
 	}
 
 	return nil
@@ -329,68 +327,107 @@ func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerNa
 	return nil
 }
 
-// CreateAppWebhook creates an incoming webhook for an app
-func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, iconURL, envVarName, containerName string) error {
+// CreateWebhook creates a single incoming webhook
+func (c *Client) CreateWebhook(channelID, displayName, description, username string) (*model.IncomingWebhook, error) {
 	// Check if webhook already exists
 	hooks, resp, err := c.API.GetIncomingWebhooks(context.Background(), 0, 1000, "")
 	if err != nil {
 		if resp != nil {
-			return fmt.Errorf("failed to get webhooks: %v, response status code: %v", err, resp.StatusCode)
+			return nil, fmt.Errorf("failed to get webhooks: %v, response status code: %v", err, resp.StatusCode)
 		}
-		return fmt.Errorf("failed to get webhooks: %v", err)
+		return nil, fmt.Errorf("failed to get webhooks: %v", err)
 	}
 
 	for _, hook := range hooks {
 		if hook.DisplayName == displayName {
 			fmt.Printf("Webhook '%s' already exists\n", displayName)
-			return nil
+			return hook, nil
 		}
 	}
 
 	// Create the webhook
-	fmt.Printf("Creating incoming webhook for %s...\n", appName)
+	fmt.Printf("Creating incoming webhook '%s'...\n", displayName)
 	hook := &model.IncomingWebhook{
 		ChannelId:   channelID,
 		DisplayName: displayName,
 		Description: description,
-		Username:    "professor",
+		Username:    username,
 	}
 
 	newHook, resp, err := c.API.CreateIncomingWebhook(context.Background(), hook)
 	if err != nil {
 		if resp != nil {
-			return fmt.Errorf("failed to create webhook: %v, response status code: %v", err, resp.StatusCode)
+			return nil, fmt.Errorf("failed to create webhook: %v, response status code: %v", err, resp.StatusCode)
 		}
-		return fmt.Errorf("failed to create webhook: %v", err)
+		return nil, fmt.Errorf("failed to create webhook: %v", err)
 	}
 
+	return newHook, nil
+}
+
+// CreateAppWebhook creates an incoming webhook for an app and updates its configuration
+func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, username, envVarName, containerName string) error {
+	// Create the webhook
+	newHook, err := c.CreateWebhook(channelID, displayName, description, username)
+	if err != nil {
+		return err
+	}
+
+	// If webhook already existed but we didn't get its ID, we can't update the config
+	if newHook == nil || newHook.Id == "" {
+		return fmt.Errorf("webhook created but no ID returned")
+	}
+
+	// Update the webhook configuration
 	return c.UpdateWebhookConfig(newHook.Id, appName, envVarName, containerName)
 }
 
-// CreateWeatherWebhook creates a webhook for the weather app
-func (c *Client) CreateWeatherWebhook(channelID string) error {
-	return c.CreateAppWebhook(
+// CreateWeatherApp sets up the weather app (webhook and slash command)
+func (c *Client) CreateWeatherApp(channelID, teamID string) error {
+	// Create webhook
+	err := c.CreateAppWebhook(
 		channelID,
 		"Weather app",
 		"weather",
 		"Weather responses",
-		"http://weather-app:8085/bot.png",
+		"professor",
 		"WEATHER_MATTERMOST_WEBHOOK_URL",
 		"weather-app",
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create weather webhook: %v", err)
+	}
+
+	// Create slash command
+	if err := c.CreateWeatherCommand(teamID); err != nil {
+		return fmt.Errorf("failed to create weather command: %v", err)
+	}
+
+	return nil
 }
 
-// CreateFlightWebhook creates a webhook for the flight app
-func (c *Client) CreateFlightWebhook(channelID string) error {
-	return c.CreateAppWebhook(
+// CreateFlightApp sets up the flight app (webhook and slash command)
+func (c *Client) CreateFlightApp(channelID, teamID string) error {
+	// Create webhook
+	err := c.CreateAppWebhook(
 		channelID,
 		"Flight app",
 		"flight-app",
 		"Flight departures",
-		"http://flightaware-app:8086/bot.png",
+		"professor",
 		"FLIGHTS_MATTERMOST_WEBHOOK_URL",
 		"flightaware-app",
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create flight webhook: %v", err)
+	}
+
+	// Create slash command
+	if err := c.CreateFlightCommand(teamID); err != nil {
+		return fmt.Errorf("failed to create flight command: %v", err)
+	}
+
+	return nil
 }
 
 // SetupWebhooks sets up webhooks for the apps
@@ -438,14 +475,14 @@ func (c *Client) SetupWebhooks() error {
 
 	fmt.Printf("Found off-topic channel ID: %s\n", channelID)
 
-	// Setup Weather webhook
-	if err := c.CreateWeatherWebhook(channelID); err != nil {
-		fmt.Printf("Warning: Failed to create weather webhook: %v\n", err)
+	// Setup Weather app
+	if err := c.CreateWeatherApp(channelID, teamID); err != nil {
+		fmt.Printf("Warning: Failed to setup weather app: %v\n", err)
 	}
 
-	// Setup Flight webhook
-	if err := c.CreateFlightWebhook(channelID); err != nil {
-		fmt.Printf("Warning: Failed to create flight webhook: %v\n", err)
+	// Setup Flight app
+	if err := c.CreateFlightApp(channelID, teamID); err != nil {
+		fmt.Printf("Warning: Failed to setup flight app: %v\n", err)
 	}
 
 	return nil
