@@ -270,20 +270,6 @@ func (c *Client) CreateWeatherCommand(teamID string) error {
 	)
 }
 
-// CreateSlashCommands creates slash commands for the apps
-func (c *Client) CreateSlashCommands(teamID string) error {
-	// Create flights command
-	if err := c.CreateFlightCommand(teamID); err != nil {
-		fmt.Printf("Warning: Failed to create flights command: %v\n", err)
-	}
-
-	// Create weather command
-	if err := c.CreateWeatherCommand(teamID); err != nil {
-		fmt.Printf("Warning: Failed to create weather command: %v\n", err)
-	}
-
-	return nil
-}
 
 // UpdateWebhookConfig updates the webhook configuration in the env file
 func (c *Client) UpdateWebhookConfig(webhookID, appName, envVarName, containerName string) error {
@@ -475,12 +461,12 @@ func (c *Client) SetupWebhooks() error {
 
 	fmt.Printf("Found off-topic channel ID: %s\n", channelID)
 
-	// Setup Weather app
+	fmt.Println("Setting up Weather app...")
 	if err := c.CreateWeatherApp(channelID, teamID); err != nil {
 		fmt.Printf("Warning: Failed to setup weather app: %v\n", err)
 	}
 
-	// Setup Flight app
+	fmt.Println("Setting up Flight app...")
 	if err := c.CreateFlightApp(channelID, teamID); err != nil {
 		fmt.Printf("Warning: Failed to setup flight app: %v\n", err)
 	}
