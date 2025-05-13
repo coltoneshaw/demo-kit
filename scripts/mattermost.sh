@@ -212,6 +212,8 @@ setupWebhooks() {
       if ! echo "$WEBHOOKS_LIST" | grep -q "$WEBHOOK_ID"; then
         echo "Weather webhook no longer exists in Mattermost, recreating..."
         createWeatherWebhook "$CHANNEL_ID"
+      else
+        echo "Found existing weather webhook in Mattermost with ID: $WEBHOOK_ID"
       fi
     else
       # No webhook URL in env file, check if webhook exists in Mattermost
@@ -245,6 +247,8 @@ setupWebhooks() {
       if ! echo "$WEBHOOKS_LIST" | grep -q "$WEBHOOK_ID"; then
         echo "Flight webhook no longer exists in Mattermost, recreating..."
         createFlightWebhook "$CHANNEL_ID"
+      else
+        echo "Found existing flight webhook in Mattermost with ID: $WEBHOOK_ID"
       fi
     else
       # No webhook URL in env file, check if webhook exists in Mattermost
