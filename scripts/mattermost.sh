@@ -249,8 +249,8 @@ setupWebhooks() {
       # Extract webhook ID from URL
       WEBHOOK_ID=$(echo "$FLIGHT_WEBHOOK_URL" | sed 's|.*/||')
       
-      # Check if webhook exists by ID - use the correct command
-      if docker exec -it mattermost mmctl webhook list --local | grep -q "$WEBHOOK_ID"; then
+      # Check if webhook exists by display name
+      if docker exec -it mattermost mmctl webhook list --local | grep -q "Display Name: flight-app"; then
         echo "Found existing flight webhook in Mattermost with ID: $WEBHOOK_ID"
       else
         echo "Flight webhook no longer exists in Mattermost, recreating..."
