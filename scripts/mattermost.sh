@@ -90,10 +90,10 @@ updateWebhookConfig() {
   # Update the env_vars.env file - use different sed syntax for macOS compatibility
   if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS version of sed requires an empty string after -i
-    sed -i '' "s|MATTERMOST_WEBHOOK_URL=.*|MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+    sed -i '' "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
   else
     # Linux version
-    sed -i "s|MATTERMOST_WEBHOOK_URL=.*|MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+    sed -i "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
   fi
   echo "Updated env_vars.env with webhook URL"
   
@@ -136,7 +136,7 @@ createWeatherWebhook() {
 # Set up webhook for weather app
 setupWebhook() {
   # Check if webhook URL is already set in env_vars.env
-  WEBHOOK_URL=$(grep "MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
+  WEBHOOK_URL=$(grep "WEATHER_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
   
   if [ -n "$WEBHOOK_URL" ] && [ "$WEBHOOK_URL" != "" ]; then
     echo "Webhook URL already exists in env_vars.env: $WEBHOOK_URL"
