@@ -58,7 +58,7 @@ func (c *Client) WaitForStart() error {
 	fmt.Printf("Waiting %d seconds for the server to start\n", MaxWaitSeconds)
 
 	for i := 0; i < MaxWaitSeconds; i++ {
-		_, resp, _ := c.API.GetPing()
+		_, resp, _ := c.API.GetPing(context.Background())
 		if resp.StatusCode == 200 {
 			fmt.Println("Server started")
 			return nil
