@@ -1,10 +1,10 @@
-package cmd
+package main
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
-	
+
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +53,7 @@ func RestoreCmdF() error {
 		fmt.Println("===========================================================")
 		return nil
 	}
-	
+
 	fmt.Println("===========================================================")
 	fmt.Println()
 	fmt.Printf("Warning: '%s' NOT found. Setting up from base\n", KeycloakDirPath)
@@ -72,7 +72,7 @@ func RestoreCmdF() error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error extracting backup: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -97,15 +97,15 @@ func BackupCmdF() error {
 		if err := os.Rename("keycloakBackup.tar", "./files/keycloak/keycloakBackup.tar"); err != nil {
 			return fmt.Errorf("error moving backup file: %v", err)
 		}
-		
+
 		return nil
 	}
-	
+
 	fmt.Println("===========================================================")
 	fmt.Println()
 	fmt.Printf("Warning: '%s' NOT found. Skipping backup\n", KeycloakDirPath)
 	fmt.Println()
 	fmt.Println("===========================================================")
-	
+
 	return nil
 }

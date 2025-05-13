@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	
+
 	"github.com/spf13/cobra"
 )
 
@@ -85,7 +85,7 @@ func SetupCmdF() error {
 		cmd.Run()
 		return fmt.Errorf("server failed to start within timeout period")
 	}
-	
+
 	fmt.Println("===========================================================")
 	fmt.Println()
 	fmt.Println("setting up test Data for Mattermost")
@@ -185,7 +185,7 @@ func SetupCmdF() error {
 				if err != nil {
 					return fmt.Errorf("error reading env file: %v", err)
 				}
-				
+
 				// Replace the webhook URL line
 				newContent := regexp.MustCompile(`MATTERMOST_WEBHOOK_URL=.*`).
 					ReplaceAllString(string(content), fmt.Sprintf("MATTERMOST_WEBHOOK_URL=%s", webhookURL))
@@ -195,7 +195,7 @@ func SetupCmdF() error {
 				if err != nil {
 					return fmt.Errorf("error writing env file: %v", err)
 				}
-				
+
 				fmt.Println("Updated env_vars.env with webhook URL")
 
 				// Restart the weather-app container
@@ -217,7 +217,7 @@ func SetupCmdF() error {
 
 	fmt.Println()
 	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
-	
+
 	return nil
 }
 
@@ -241,6 +241,6 @@ func EchoLoginsCmdF() error {
 	fmt.Println("For more logins check out https://github.com/coltoneshaw/mattermost#accounts")
 	fmt.Println()
 	fmt.Println("========================================================================")
-	
+
 	return nil
 }

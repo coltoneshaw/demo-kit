@@ -1,8 +1,8 @@
-package cmd
+package main
 
 import (
 	"fmt"
-	
+
 	"github.com/spf13/cobra"
 )
 
