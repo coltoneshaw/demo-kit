@@ -73,6 +73,8 @@ type SubscriptionManager struct {
 	Subscriptions map[string]*Subscription `json:"subscriptions"` // Map of subscription ID to subscription
 	Mutex         sync.RWMutex             `json:"-"`             // Mutex to protect the map (not serialized)
 	FilePath      string                   `json:"-"`             // Path to the subscription file (not serialized)
+	HourlyLimit   int                      `json:"hourly_limit"`  // Maximum API calls per hour
+	DailyLimit    int                      `json:"daily_limit"`   // Maximum API calls per day
 }
 
 // NewSubscriptionManager creates a new subscription manager
@@ -80,6 +82,8 @@ func NewSubscriptionManager(filePath string) *SubscriptionManager {
 	sm := &SubscriptionManager{
 		Subscriptions: make(map[string]*Subscription),
 		FilePath:      filePath,
+		HourlyLimit:   25,  // 25 requests per hour limit
+		DailyLimit:    500, // 500 requests per day limit
 	}
 
 	// Load existing subscriptions from file
@@ -218,6 +222,64 @@ func (sm *SubscriptionManager) GetSubscriptionsForUser(userID string) []*Subscri
 	return subs
 }
 
+// CalculateAPIUsage calculates the current API usage per hour and per day
+func (sm *SubscriptionManager) CalculateAPIUsage() (hourlyUsage, dailyUsage int) {
+	sm.Mutex.RLock()
+	defer sm.Mutex.RUnlock()
+	
+	for _, sub := range sm.Subscriptions {
+		// Calculate how many requests this subscription makes per hour
+		// (3600000 milliseconds in an hour)
+		requestsPerHour := 3600000 / sub.UpdateFrequency
+		if requestsPerHour < 1 {
+			requestsPerHour = 1 // Minimum 1 request per hour
+		}
+		hourlyUsage += int(requestsPerHour)
+		
+		// Calculate how many requests this subscription makes per day
+		// (86400000 milliseconds in a day)
+		requestsPerDay := 86400000 / sub.UpdateFrequency
+		if requestsPerDay < 1 {
+			requestsPerDay = 1 // Minimum 1 request per day
+		}
+		dailyUsage += int(requestsPerDay)
+	}
+	
+	return hourlyUsage, dailyUsage
+}
+
+// CheckSubscriptionLimits checks if adding a new subscription would exceed API limits
+func (sm *SubscriptionManager) CheckSubscriptionLimits(updateFrequency int64) (bool, string) {
+	// Calculate current usage
+	currentHourlyUsage, currentDailyUsage := sm.CalculateAPIUsage()
+	
+	// Calculate new subscription's usage
+	newHourlyUsage := 3600000 / updateFrequency
+	if newHourlyUsage < 1 {
+		newHourlyUsage = 1
+	}
+	
+	newDailyUsage := 86400000 / updateFrequency
+	if newDailyUsage < 1 {
+		newDailyUsage = 1
+	}
+	
+	// Check if adding this subscription would exceed limits
+	if currentHourlyUsage + int(newHourlyUsage) > sm.HourlyLimit {
+		return false, fmt.Sprintf(
+			"Adding this subscription would exceed the hourly API limit of %d requests. Current usage: %d, New subscription would add: %d requests per hour.",
+			sm.HourlyLimit, currentHourlyUsage, newHourlyUsage)
+	}
+	
+	if currentDailyUsage + int(newDailyUsage) > sm.DailyLimit {
+		return false, fmt.Sprintf(
+			"Adding this subscription would exceed the daily API limit of %d requests. Current usage: %d, New subscription would add: %d requests per day.",
+			sm.DailyLimit, currentDailyUsage, newDailyUsage)
+	}
+	
+	return true, ""
+}
+
 // WeatherCodeDescription maps weather codes to human-readable descriptions
 var WeatherCodeDescription = map[int]string{
 	1000: "Clear",
@@ -264,6 +326,25 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+	
+	http.HandleFunc("/api-usage", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
+		hourlyUsage, dailyUsage := subscriptionManager.CalculateAPIUsage()
+		
+		usage := map[string]interface{}{
+			"hourly_usage": hourlyUsage,
+			"daily_usage": dailyUsage,
+			"hourly_limit": subscriptionManager.HourlyLimit,
+			"daily_limit": subscriptionManager.DailyLimit,
+			"hourly_remaining": subscriptionManager.HourlyLimit - hourlyUsage,
+			"daily_remaining": subscriptionManager.DailyLimit - dailyUsage,
+			"subscription_count": len(subscriptionManager.Subscriptions),
+		}
+		
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(usage)
 	})
 
 	http.HandleFunc("/weather", func(w http.ResponseWriter, r *http.Request) {
@@ -473,6 +554,18 @@ func main() {
 			if updateFrequency < 30000 {
 				response := MattermostResponse{
 					Text:         "Update frequency must be at least 30000 milliseconds (30 seconds).",
+					ResponseType: "ephemeral",
+					ChannelID:    channelID,
+				}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+			
+			// Check if adding this subscription would exceed API limits
+			withinLimits, limitMessage := subscriptionManager.CheckSubscriptionLimits(updateFrequency)
+			if !withinLimits {
+				response := MattermostResponse{
+					Text:         limitMessage,
 					ResponseType: "ephemeral",
 					ChannelID:    channelID,
 				}
