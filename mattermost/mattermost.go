@@ -75,6 +75,9 @@ func (c *Client) CreateUsers() error {
 	// Check if sysadmin user exists
 	users, resp, err := c.API.GetUsers(context.Background(), 0, 100, "")
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to get users: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to get users: %v", err)
 	}
 
@@ -142,6 +145,9 @@ func (c *Client) CreateTeam() error {
 	// Check if team exists
 	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to get teams: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
 
@@ -177,6 +183,9 @@ func (c *Client) CreateTeam() error {
 	// Add users to the team
 	users, resp, err := c.API.GetUsers(context.Background(), 0, 100, "")
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to get users: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to get users: %v", err)
 	}
 
@@ -202,6 +211,9 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 	// Get existing commands
 	commands, resp, err := c.API.ListCommands(context.Background(), teamID, true)
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to list commands: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to list commands: %v", err)
 	}
 
@@ -318,6 +330,9 @@ func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, 
 	// Check if webhook already exists
 	hooks, resp, err := c.API.GetIncomingWebhooks(context.Background(), 0, 1000, "")
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to get webhooks: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to get webhooks: %v", err)
 	}
 
@@ -376,6 +391,9 @@ func (c *Client) SetupWebhooks() error {
 	// Get the channel ID for off-topic in the test team
 	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to get teams: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to get teams: %v", err)
 	}
 
@@ -393,6 +411,9 @@ func (c *Client) SetupWebhooks() error {
 
 	channels, resp, err := c.API.GetPublicChannelsForTeam(context.Background(), teamID, 0, 100, "")
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to get channels: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to get channels: %v", err)
 	}
 
