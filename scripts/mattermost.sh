@@ -223,8 +223,8 @@ setupWebhooks() {
             echo "Found existing weather webhook in Mattermost with ID: $WEBHOOK_ID"
           else
             echo "Found existing weather webhook in Mattermost with different ID: $ACTUAL_ID"
-          # Get the ID of the existing webhook
-          EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "weather" | grep "ID:" | awk '{print $2}')
+            # Get the ID of the existing webhook
+            EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "weather" | grep "ID:" | awk '{print $2}')
           if [ -n "$EXISTING_ID" ]; then
             echo "Updating webhook URL in env_vars.env to match existing webhook ID: $EXISTING_ID"
             WEBHOOK_URL="http://mattermost:8065/hooks/$EXISTING_ID"
@@ -285,8 +285,8 @@ setupWebhooks() {
             echo "Found existing flight webhook in Mattermost with ID: $WEBHOOK_ID"
           else
             echo "Found existing flight webhook in Mattermost with different ID: $ACTUAL_ID"
-          # Get the ID of the existing webhook
-          EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "flight-app" | grep "ID:" | awk '{print $2}')
+            # Get the ID of the existing webhook
+            EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "flight-app" | grep "ID:" | awk '{print $2}')
           if [ -n "$EXISTING_ID" ]; then
             echo "Updating webhook URL in env_vars.env to match existing webhook ID: $EXISTING_ID"
             WEBHOOK_URL="http://mattermost:8065/hooks/$EXISTING_ID"
