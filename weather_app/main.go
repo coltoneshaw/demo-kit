@@ -737,95 +737,40 @@ func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 
 // sendMattermostMessage sends a message to a Mattermost channel
 func sendMattermostMessage(channelID, text string) error {
-	// Create the message payload
-	response := MattermostResponse{
-		Text:         text,
-		ResponseType: "in_channel",
-		ChannelID:    channelID,
-	}
-
-	// Convert to JSON
-	payload, err := json.Marshal(response)
-	if err != nil {
-		return fmt.Errorf("error marshaling message: %v", err)
-	}
-
 	// Get the Mattermost webhook URL from environment variable
 	webhookURL := os.Getenv("MATTERMOST_WEBHOOK_URL")
 	if webhookURL == "" {
-		// Try to use the response URL from the original request if available
-		log.Printf("MATTERMOST_WEBHOOK_URL not set, using direct webhook to channel %s", channelID)
-		
-		// For direct webhook, we need to use the Mattermost API
-		mattermostURL := os.Getenv("MATTERMOST_URL")
-		if mattermostURL == "" {
-			mattermostURL = "http://localhost:8065" // Default Mattermost URL
-		}
-		
-		// Get the bot token
-		botToken := os.Getenv("MATTERMOST_BOT_TOKEN")
-		if botToken == "" {
-			return fmt.Errorf("neither MATTERMOST_WEBHOOK_URL nor MATTERMOST_BOT_TOKEN environment variable is set")
-		}
-		
-		// Create a direct post to the channel
-		postURL := fmt.Sprintf("%s/api/v4/posts", mattermostURL)
-		
-		// Create the post payload
-		postPayload := map[string]interface{}{
-			"channel_id": channelID,
-			"message":    text,
-		}
-		
-		postData, err := json.Marshal(postPayload)
-		if err != nil {
-			return fmt.Errorf("error marshaling post data: %v", err)
-		}
-		
-		// Create the request
-		req, err := http.NewRequest("POST", postURL, bytes.NewBuffer(postData))
-		if err != nil {
-			return fmt.Errorf("error creating request: %v", err)
-		}
-		
-		// Set headers
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+botToken)
-		
-		// Send the request
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return fmt.Errorf("error sending message via API: %v", err)
-		}
-		defer resp.Body.Close()
-		
-		// Check response status
-		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("error from Mattermost API: status %d, body: %s", resp.StatusCode, string(body))
-		}
-		
-		log.Printf("Successfully sent message to channel %s via API", channelID)
-		return nil
+		return fmt.Errorf("MATTERMOST_WEBHOOK_URL environment variable not set")
 	}
 	
-	// If we have a webhook URL, use it
-	log.Printf("Using webhook URL to send message to channel %s", channelID)
+	// Create the webhook payload with channel parameter
+	payload := map[string]interface{}{
+		"text":         text,
+		"channel":      channelID,  // This is the key parameter that controls where the message goes
+		"username":     "Weather Bot",
+		"icon_url":     os.Getenv("BOT_ICON_URL"),
+	}
+	
+	// Convert to JSON
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("error marshaling webhook payload: %v", err)
+	}
 	
 	// Send the request
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payload))
+	log.Printf("Sending webhook message to channel %s", channelID)
+	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payloadBytes))
 	if err != nil {
-		return fmt.Errorf("error sending message via webhook: %v", err)
+		return fmt.Errorf("error sending webhook: %v", err)
 	}
 	defer resp.Body.Close()
-
+	
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("error from Mattermost webhook: status %d, body: %s", resp.StatusCode, string(body))
 	}
-
+	
 	log.Printf("Successfully sent message to channel %s via webhook", channelID)
 	return nil
 }
