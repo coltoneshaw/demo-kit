@@ -2,7 +2,31 @@ package cmd
 
 import (
 	"fmt"
+	
+	"github.com/spf13/cobra"
 )
+
+// GeneralCmd represents the general command
+var GeneralCmd = &cobra.Command{
+	Use:   "general",
+	Short: "General utility commands",
+	Long:  `Commands for general system information and utilities.`,
+}
+
+// LoginsCmd displays login information for services
+var LoginsCmd = &cobra.Command{
+	Use:   "logins",
+	Short: "Display login information for services",
+	Long:  `Display login information for Mattermost, Keycloak, Grafana, and other services.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return LoginsCmdF()
+	},
+}
+
+func init() {
+	RootCmd.AddCommand(GeneralCmd)
+	GeneralCmd.AddCommand(LoginsCmd)
+}
 
 // LoginsCmdF prints login information for various services
 func LoginsCmdF() error {
