@@ -9,10 +9,11 @@ setup-mattermost:
 	@cp ./files/mattermost/copilotDefaults.json ./volumes/mattermost/config
 	@cp ./files/mattermost/samlCert.crt ./volumes/mattermost/config
 	@cp ./license.mattermost ./volumes/mattermost/config/license.mattermost-enterprise
-	@./scripts/mattermost.sh setup
+	@cd mattermost && go run ./cmd/main.go -setup
 
 check-mattermost:
-	@./scripts/mattermost.sh waitForStart
+	@echo "Waiting for Mattermost server to start..."
+	@cd mattermost && go run ./cmd/main.go -setup || (echo "Mattermost server not ready yet, will try again later"; exit 0)
 
 restore-keycloak:
 	@./scripts/keycloak.sh restore
@@ -46,7 +47,7 @@ run-core:
 
 run-integrations:
 	@echo "Starting the integrations..."
-	@docker-compose up -d weather-app
+	@docker-compose up -d weather-app flightaware-app
 
 run-rtcd:
 	@echo "Starting RTCD..."
@@ -87,4 +88,5 @@ nuke:
 	@make delete-data
 
 echo-logins:
+	@cd mattermost && go run ./cmd/main.go -echo-logins
 	@./scripts/general.sh logins

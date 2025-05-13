@@ -4,7 +4,7 @@ This is a json example to build the advanced logs for Mattermost. This will incl
 
 ## Weather API
 
-The repository also includes a simple Go-based weather API in the `weather_app` directory that provides current weather information from the Tomorrow.io API.
+The repository also includes a simple Go-based weather API in the `weather` directory that provides current weather information from the Tomorrow.io API.
 
 ### Features
 

@@ -134,7 +134,7 @@ services:
   weather-app:
     container_name: weather-app
     build:
-      context: ./weather_app
+      context: ./apps/weather
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
@@ -143,6 +143,21 @@ services:
       - ./files/env_vars.env
     volumes:
       - ./volumes/weather-app:/app/data
-      - ./weather_app/static:/app/static
+      - ./apps/weather/static:/app/static
+    depends_on:
+      - mattermost
+  
+  flightaware-app:
+    container_name: flightaware-app
+    build:
+      context: ./apps/flightaware
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    env_file:
+      - ./files/env_vars.env
+    volumes:
+      - ./volumes/flightaware-app:/app/data
     depends_on:
       - mattermost
