@@ -339,7 +339,7 @@ func main() {
 		var location string
 		var subscribe bool
 		var unsubscribe bool
-		var updateFrequency time.Duration
+		var updateFrequency int64
 		var subscriptionID string
 
 		// Split text into words
