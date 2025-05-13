@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +47,7 @@ type MattermostPayload struct {
 type MattermostResponse struct {
 	Text         string `json:"text"`
 	ResponseType string `json:"response_type"`
+	ChannelID    string `json:"channel_id,omitempty"`
 }
 
 // WeatherCodeDescription maps weather codes to human-readable descriptions
@@ -122,6 +124,20 @@ func main() {
 			return
 		}
 
+		// Read the request body for logging
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Error reading request body: %v", err)
+			http.Error(w, "Error reading request body", http.StatusBadRequest)
+			return
+		}
+		
+		// Log the raw request body
+		log.Printf("Received webhook payload: %s", string(bodyBytes))
+		
+		// Create a new reader with the same body data for parsing the form
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		
 		// Parse the form data
 		if err := r.ParseForm(); err != nil {
 			log.Printf("Error parsing form data: %v", err)
@@ -130,7 +146,7 @@ func main() {
 		}
 		
 		// Log all form values for debugging
-		log.Printf("Received webhook form data:")
+		log.Printf("Parsed form data:")
 		for key, values := range r.Form {
 			log.Printf("  %s: %v", key, values)
 		}
@@ -139,10 +155,11 @@ func main() {
 		userID := r.FormValue("user_id")
 		userName := r.FormValue("user_name")
 		channelName := r.FormValue("channel_name")
+		channelID := r.FormValue("channel_id")
 		text := r.FormValue("text")
 		
-		log.Printf("Processing weather request from user: %s (%s) in channel: %s with text: %s", 
-			userName, userID, channelName, text)
+		log.Printf("Processing weather request from user: %s (%s) in channel: %s (%s) with text: %s", 
+			userName, userID, channelName, channelID, text)
 		
 		// Get location from text parameter, default to Wendell, NC
 		location := "27591 us" // Default to Wendell, NC
@@ -157,6 +174,7 @@ func main() {
 			response := MattermostResponse{
 				Text:         fmt.Sprintf("Error fetching weather data: %v", err),
 				ResponseType: "ephemeral", // Only visible to the user who triggered the command
+				ChannelID:    channelID,   // Specify the channel to post to
 			}
 			json.NewEncoder(w).Encode(response)
 			return
@@ -167,6 +185,7 @@ func main() {
 		response := MattermostResponse{
 			Text:         weatherText,
 			ResponseType: "in_channel", // Make the response visible to everyone in the channel
+			ChannelID:    channelID,    // Specify the channel to post to
 		}
 
 		// Return the response
@@ -176,7 +195,7 @@ func main() {
 			return
 		}
 		
-		log.Printf("Successfully sent weather response")
+		log.Printf("Successfully sent weather response to channel: %s (%s)", channelName, channelID)
 	})
 
 	// Start the server
