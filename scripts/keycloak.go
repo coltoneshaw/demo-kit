@@ -1,4 +1,4 @@
-package main
+package keycloak
 
 import (
 	"fmt"
@@ -6,19 +6,20 @@ import (
 	"os/exec"
 )
 
-const dirPath = "./volumes/keycloak"
+const DirPath = "./volumes/keycloak"
 
-func restore() {
-	if _, err := os.Stat(dirPath); !os.IsNotExist(err) {
+// Restore sets up Keycloak from backup if needed
+func Restore() {
+	if _, err := os.Stat(DirPath); !os.IsNotExist(err) {
 		fmt.Println("===========================================================")
 		fmt.Println()
-		fmt.Printf("'%s' found skipping keycloak setup\n", dirPath)
+		fmt.Printf("'%s' found skipping keycloak setup\n", DirPath)
 		fmt.Println()
 		fmt.Println("===========================================================")
 	} else {
 		fmt.Println("===========================================================")
 		fmt.Println()
-		fmt.Printf("Warning: '%s' NOT found. Setting up from base\n", dirPath)
+		fmt.Printf("Warning: '%s' NOT found. Setting up from base\n", DirPath)
 		fmt.Println()
 		fmt.Println("===========================================================")
 
@@ -39,11 +40,12 @@ func restore() {
 	}
 }
 
-func backup() {
-	if _, err := os.Stat(dirPath); !os.IsNotExist(err) {
+// Backup creates a backup of Keycloak data
+func Backup() {
+	if _, err := os.Stat(DirPath); !os.IsNotExist(err) {
 		fmt.Println("===========================================================")
 		fmt.Println()
-		fmt.Printf("'%s' found backing up keycloak\n", dirPath)
+		fmt.Printf("'%s' found backing up keycloak\n", DirPath)
 		fmt.Println()
 		fmt.Println("===========================================================")
 
@@ -64,26 +66,8 @@ func backup() {
 	} else {
 		fmt.Println("===========================================================")
 		fmt.Println()
-		fmt.Printf("Warning: '%s' NOT found. Skipping backup\n", dirPath)
+		fmt.Printf("Warning: '%s' NOT found. Skipping backup\n", DirPath)
 		fmt.Println()
 		fmt.Println("===========================================================")
-	}
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide a command: restore or backup")
-		os.Exit(1)
-	}
-
-	command := os.Args[1]
-	switch command {
-	case "restore":
-		restore()
-	case "backup":
-		backup()
-	default:
-		fmt.Printf("Unknown command: %s\n", command)
-		os.Exit(1)
 	}
 }

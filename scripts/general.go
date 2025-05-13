@@ -1,11 +1,11 @@
-package main
+package general
 
 import (
 	"fmt"
-	"os"
 )
 
-func logins() {
+// Logins prints login information for various services
+func Logins() {
 	fmt.Println("===========================================================")
 	fmt.Println()
 	fmt.Println("- Mattermost: http://localhost:8065 with the logins above if you ran setup")
@@ -17,20 +17,4 @@ func logins() {
 	fmt.Println("- PostgreSQL  localhost:5432 with 'mmuser' / 'mmuser_password'")
 	fmt.Println()
 	fmt.Println("===========================================================")
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide a command: logins")
-		os.Exit(1)
-	}
-
-	command := os.Args[1]
-	switch command {
-	case "logins":
-		logins()
-	default:
-		fmt.Printf("Unknown command: %s\n", command)
-		os.Exit(1)
-	}
 }

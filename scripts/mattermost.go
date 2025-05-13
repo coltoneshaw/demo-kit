@@ -1,23 +1,24 @@
-package main
+package mattermost
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 	"time"
-	"io/ioutil"
 )
 
-const dirPath = "./volumes/mattermost"
-const maxWaitSeconds = 120
+const DirPath = "./volumes/mattermost"
+const MaxWaitSeconds = 120
 
-func waitForStart() bool {
-	fmt.Printf("waiting %d seconds for the server to start\n", maxWaitSeconds)
+// WaitForStart waits for the Mattermost server to start
+func WaitForStart() bool {
+	fmt.Printf("waiting %d seconds for the server to start\n", MaxWaitSeconds)
 	
 	total := 0
-	for total <= maxWaitSeconds {
+	for total <= MaxWaitSeconds {
 		cmd := exec.Command("docker", "exec", "-i", "mattermost", "mmctl", "system", "status", "--local")
 		cmd.Stderr = nil
 		if err := cmd.Run(); err == nil {
@@ -30,7 +31,7 @@ func waitForStart() bool {
 		time.Sleep(1 * time.Second)
 	}
 	
-	fmt.Printf("\nserver didn't start in %d seconds\n", maxWaitSeconds)
+	fmt.Printf("\nserver didn't start in %d seconds\n", MaxWaitSeconds)
 	
 	stopCmd := exec.Command("make", "stop")
 	stopCmd.Stdout = os.Stdout
@@ -40,8 +41,9 @@ func waitForStart() bool {
 	return false
 }
 
-func setup() {
-	if !waitForStart() {
+// Setup configures the Mattermost server with test data
+func Setup() {
+	if !WaitForStart() {
 		cmd := exec.Command("make", "stop")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -183,7 +185,8 @@ func setup() {
 	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
 }
 
-func echoLogins() {
+// EchoLogins prints login information for Mattermost users
+func EchoLogins() {
 	fmt.Println()
 	fmt.Println("========================================================================")
 	fmt.Println()
@@ -202,22 +205,4 @@ func echoLogins() {
 	fmt.Println("For more logins check out https://github.com/coltoneshaw/mattermost#accounts")
 	fmt.Println()
 	fmt.Println("========================================================================")
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide a command: setup or echoLogins")
-		os.Exit(1)
-	}
-
-	command := os.Args[1]
-	switch command {
-	case "setup":
-		setup()
-	case "echoLogins":
-		echoLogins()
-	default:
-		fmt.Printf("Unknown command: %s\n", command)
-		os.Exit(1)
-	}
 }
