@@ -115,37 +115,50 @@ func main() {
 	http.HandleFunc("/incoming", func(w http.ResponseWriter, r *http.Request) {
 		// Set content type header early
 		w.Header().Set("Content-Type", "application/json")
-
+		
 		if r.Method != http.MethodPost {
 			log.Printf("Method not allowed: %s", r.Method)
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Read and log the request body
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Printf("Error reading request body: %v", err)
-			http.Error(w, "Error reading request body", http.StatusBadRequest)
+		// Parse the form data
+		if err := r.ParseForm(); err != nil {
+			log.Printf("Error parsing form data: %v", err)
+			http.Error(w, "Error parsing form data", http.StatusBadRequest)
 			return
 		}
-		log.Printf("Received webhook payload: %s", string(body))
-
-		// Parse the incoming webhook payload
-		var payload MattermostPayload
-		if err := json.Unmarshal(body, &payload); err != nil {
-			log.Printf("Error parsing JSON payload: %v", err)
-			http.Error(w, "Invalid request payload", http.StatusBadRequest)
-			return
+		
+		// Log all form values for debugging
+		log.Printf("Received webhook form data:")
+		for key, values := range r.Form {
+			log.Printf("  %s: %v", key, values)
 		}
-
-		log.Printf("Processing weather request from user: %s in channel: %s", payload.UserID, payload.Channel)
-
-		// Get weather data for Wendell, NC
-		weatherData, err := getWeatherData("27591 us", apiKey)
+		
+		// Extract user information
+		userID := r.FormValue("user_id")
+		userName := r.FormValue("user_name")
+		channelName := r.FormValue("channel_name")
+		text := r.FormValue("text")
+		
+		log.Printf("Processing weather request from user: %s (%s) in channel: %s with text: %s", 
+			userName, userID, channelName, text)
+		
+		// Get location from text parameter, default to Wendell, NC
+		location := "27591 us" // Default to Wendell, NC
+		if text != "" {
+			location = text
+		}
+		
+		// Get weather data
+		weatherData, err := getWeatherData(location, apiKey)
 		if err != nil {
 			log.Printf("Error fetching weather data: %v", err)
-			http.Error(w, fmt.Sprintf("Error fetching weather data: %v", err), http.StatusInternalServerError)
+			response := MattermostResponse{
+				Text:         fmt.Sprintf("Error fetching weather data: %v", err),
+				ResponseType: "ephemeral", // Only visible to the user who triggered the command
+			}
+			json.NewEncoder(w).Encode(response)
 			return
 		}
 
@@ -153,7 +166,7 @@ func main() {
 		weatherText := formatWeatherResponse(weatherData)
 		response := MattermostResponse{
 			Text:         weatherText,
-			ResponseType: "in_channel", // Make the response visible to everyone in the channelw
+			ResponseType: "in_channel", // Make the response visible to everyone in the channel
 		}
 
 		// Return the response
@@ -162,7 +175,7 @@ func main() {
 			http.Error(w, "Error encoding response", http.StatusInternalServerError)
 			return
 		}
-
+		
 		log.Printf("Successfully sent weather response")
 	})
 
