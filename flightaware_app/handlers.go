@@ -21,6 +21,13 @@ func handleFlightDepartureRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert airport code to ICAO format if needed
+	icaoAirport := GetICAOCode(airport)
+	if icaoAirport != airport {
+		log.Printf("Converted airport code %s to ICAO code %s", airport, icaoAirport)
+		airport = icaoAirport
+	}
+
 	// Parse start and end times
 	var start, end int64
 	var err error
@@ -166,8 +173,14 @@ func handleDeparturesCommand(w http.ResponseWriter, args []string, channelID, us
 		return
 	}
 
+	// Convert airport code to ICAO format if needed
+	icaoAirport := GetICAOCode(airport)
+	if icaoAirport != airport {
+		log.Printf("Converted airport code %s to ICAO code %s", airport, icaoAirport)
+	}
+
 	// Get flight data
-	flights, err := getDepartureFlights(airport, start, end)
+	flights, err := getDepartureFlights(icaoAirport, start, end)
 	if err != nil {
 		log.Printf("Error fetching flight data: %v", err)
 		sendErrorResponse(w, channelID, fmt.Sprintf("Error fetching flight data: %v", err))
@@ -201,10 +214,11 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 		"- `/flights departures --airport [code] --start [unix_time] --end [unix_time]` - Get departures for a specific time range\n" +
 		"- `/flights help` - Show this help message\n\n" +
 		"**Examples:**\n" +
-		"- `/flights departures --airport KSFO` - Get departures from San Francisco International\n" +
+		"- `/flights departures --airport SFO` - Get departures from San Francisco International (3-letter codes are automatically converted)\n" +
 		"- `/flights departures --airport EGLL --start 1714521600 --end 1714608000` - Get departures from London Heathrow for a specific day\n\n" +
 		"**Current Unix Time:** " + fmt.Sprintf("%d", time.Now().Unix()) + "\n" +
-		"**24 Hours Ago:** " + fmt.Sprintf("%d", time.Now().Add(-24*time.Hour).Unix())
+		"**24 Hours Ago:** " + fmt.Sprintf("%d", time.Now().Add(-24*time.Hour).Unix()) + "\n\n" +
+		"**Note:** 3-letter airport codes (like SFO, LAX, JFK) are automatically converted to 4-letter ICAO codes (KSFO, KLAX, KJFK)."
 
 	response := MattermostResponse{
 		Text:         helpText,
