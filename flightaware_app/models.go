@@ -11,6 +11,7 @@ type Flight struct {
 	Icao24        string  `json:"icao24"`        // ICAO 24-bit address of the transponder
 	Callsign      string  `json:"callsign"`      // Callsign of the vehicle
 	Origin        string  `json:"origin"`        // Origin airport ICAO code
+	Destination   string  `json:"destination"`   // Destination airport ICAO code
 	TimePosition  int64   `json:"timePosition"`  // Unix timestamp for the last position update
 	LastContact   int64   `json:"lastContact"`   // Unix timestamp for the last update in general
 	Longitude     float64 `json:"longitude"`     // WGS-84 longitude in decimal degrees

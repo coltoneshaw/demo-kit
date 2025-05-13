@@ -218,7 +218,8 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 		"- `/flights departures --airport EGLL --start 1714521600 --end 1714608000` - Get departures from London Heathrow for a specific day\n\n" +
 		"**Current Unix Time:** " + fmt.Sprintf("%d", time.Now().Unix()) + "\n" +
 		"**24 Hours Ago:** " + fmt.Sprintf("%d", time.Now().Add(-24*time.Hour).Unix()) + "\n\n" +
-		"**Note:** 3-letter airport codes (like SFO, LAX, JFK) are automatically converted to 4-letter ICAO codes (KSFO, KLAX, KJFK)."
+		"**Note:** 3-letter airport codes (like SFO, LAX, JFK) are automatically converted to 4-letter ICAO codes (KSFO, KLAX, KJFK).\n" +
+		"Information includes flight callsign, departure time, destination, speed, and altitude when available."
 
 	response := MattermostResponse{
 		Text:         helpText,

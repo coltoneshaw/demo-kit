@@ -79,6 +79,11 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 			strings.TrimSpace(flight.Callsign),
 			departureTime))
 		
+		// Add destination if available
+		if flight.Destination != "" {
+			sb.WriteString(fmt.Sprintf(" to %s", flight.Destination))
+		}
+		
 		if flight.Velocity > 0 {
 			sb.WriteString(fmt.Sprintf(", Speed: %.0f km/h", flight.Velocity*3.6)) // Convert m/s to km/h
 		}
