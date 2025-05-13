@@ -21,13 +21,13 @@ func restore() {
 		fmt.Printf("Warning: '%s' NOT found. Setting up from base\n", dirPath)
 		fmt.Println()
 		fmt.Println("===========================================================")
-		
+
 		// Create directory
 		if err := os.MkdirAll("./volumes/keycloak", 0755); err != nil {
 			fmt.Printf("Error creating directory: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		// Extract backup
 		cmd := exec.Command("tar", "-zxf", "./files/keycloak/keycloakBackup.tar", "-C", "./volumes/keycloak")
 		cmd.Stdout = os.Stdout
@@ -46,7 +46,7 @@ func backup() {
 		fmt.Printf("'%s' found backing up keycloak\n", dirPath)
 		fmt.Println()
 		fmt.Println("===========================================================")
-		
+
 		// Create backup
 		cmd := exec.Command("tar", "-zcf", "keycloakBackup.tar", "-C", "./volumes/keycloak", ".")
 		cmd.Stdout = os.Stdout
@@ -55,7 +55,7 @@ func backup() {
 			fmt.Printf("Error creating backup: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		// Move backup file
 		if err := os.Rename("keycloakBackup.tar", "./files/keycloak/keycloakBackup.tar"); err != nil {
 			fmt.Printf("Error moving backup file: %v\n", err)
