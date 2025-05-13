@@ -230,6 +230,7 @@ setupWebhooks() {
             fi
             echo "Restarting weather-app container..."
             docker restart weather-app
+            echo "Weather app restarted successfully with updated webhook URL"
           fi
         else
           echo "Weather webhook no longer exists in Mattermost, recreating..."
@@ -285,7 +286,12 @@ setupWebhooks() {
               sed -i "s|FLIGHTS_MATTERMOST_WEBHOOK_URL=.*|FLIGHTS_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
             fi
             echo "Restarting flightaware-app container..."
-            docker restart flightaware-app || echo "Warning: flightaware-app container not found"
+            if docker ps | grep -q flightaware-app; then
+              docker restart flightaware-app
+              echo "Flight app restarted successfully with updated webhook URL"
+            else
+              echo "Warning: flightaware-app container not found, will be updated when container starts"
+            fi
           fi
         else
           echo "Flight webhook no longer exists in Mattermost, recreating..."
