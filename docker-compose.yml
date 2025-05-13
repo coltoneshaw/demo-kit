@@ -143,5 +143,6 @@ services:
       - ./files/env_vars.env
     volumes:
       - ./volumes/weather-app:/app/data
+      - ./weather_app/static:/app/static
     depends_on:
       - mattermost

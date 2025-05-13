@@ -28,6 +28,9 @@ COPY --from=builder /app/weather-app .
 # Create directory for static files
 RUN mkdir -p /app/static
 
+# Copy static files
+COPY static/ /app/static/
+
 # Expose the port the app runs on
 EXPOSE 8085
 
