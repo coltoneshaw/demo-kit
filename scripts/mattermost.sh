@@ -199,18 +199,53 @@ setupWebhooks() {
   if [ -n "$CHANNEL_ID" ]; then
     echo "Found off-topic channel ID: $CHANNEL_ID"
     
+    # Get list of existing webhooks
+    WEBHOOKS_LIST=$(docker exec -it mattermost mmctl webhook list-incoming --local)
+    
     # Setup Weather webhook
-    WEATHER_WEBHOOK_URL=$(grep "WEATHER_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
-    if [ -n "$WEATHER_WEBHOOK_URL" ] && [ "$WEATHER_WEBHOOK_URL" != "" ]; then
-      echo "Weather webhook URL already exists in env_vars.env: $WEATHER_WEBHOOK_URL"
+    if echo "$WEBHOOKS_LIST" | grep -q "weather"; then
+      echo "Weather webhook already exists in Mattermost"
+      # Make sure the webhook URL is in the env file
+      WEATHER_WEBHOOK_ID=$(echo "$WEBHOOKS_LIST" | grep -A 1 "weather" | grep "ID:" | awk '{print $2}')
+      if [ -n "$WEATHER_WEBHOOK_ID" ]; then
+        WEATHER_WEBHOOK_URL="http://mattermost:8065/hooks/$WEATHER_WEBHOOK_ID"
+        # Update env file if needed
+        CURRENT_WEATHER_URL=$(grep "WEATHER_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
+        if [ "$CURRENT_WEATHER_URL" != "$WEATHER_WEBHOOK_URL" ]; then
+          echo "Updating weather webhook URL in env_vars.env"
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEATHER_WEBHOOK_URL|" "$ENV_FILE"
+          else
+            sed -i "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEATHER_WEBHOOK_URL|" "$ENV_FILE"
+          fi
+          echo "Restarting weather-app container..."
+          docker restart weather-app
+        fi
+      fi
     else
       createWeatherWebhook "$CHANNEL_ID"
     fi
     
     # Setup Flight webhook
-    FLIGHT_WEBHOOK_URL=$(grep "FLIGHTS_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
-    if [ -n "$FLIGHT_WEBHOOK_URL" ] && [ "$FLIGHT_WEBHOOK_URL" != "" ]; then
-      echo "Flight webhook URL already exists in env_vars.env: $FLIGHT_WEBHOOK_URL"
+    if echo "$WEBHOOKS_LIST" | grep -q "flight-app"; then
+      echo "Flight webhook already exists in Mattermost"
+      # Make sure the webhook URL is in the env file
+      FLIGHT_WEBHOOK_ID=$(echo "$WEBHOOKS_LIST" | grep -A 1 "flight-app" | grep "ID:" | awk '{print $2}')
+      if [ -n "$FLIGHT_WEBHOOK_ID" ]; then
+        FLIGHT_WEBHOOK_URL="http://mattermost:8065/hooks/$FLIGHT_WEBHOOK_ID"
+        # Update env file if needed
+        CURRENT_FLIGHT_URL=$(grep "FLIGHTS_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
+        if [ "$CURRENT_FLIGHT_URL" != "$FLIGHT_WEBHOOK_URL" ]; then
+          echo "Updating flight webhook URL in env_vars.env"
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|FLIGHTS_MATTERMOST_WEBHOOK_URL=.*|FLIGHTS_MATTERMOST_WEBHOOK_URL=$FLIGHT_WEBHOOK_URL|" "$ENV_FILE"
+          else
+            sed -i "s|FLIGHTS_MATTERMOST_WEBHOOK_URL=.*|FLIGHTS_MATTERMOST_WEBHOOK_URL=$FLIGHT_WEBHOOK_URL|" "$ENV_FILE"
+          fi
+          echo "Restarting flightaware-app container..."
+          docker restart flightaware-app
+        fi
+      fi
     else
       createFlightWebhook "$CHANNEL_ID"
     fi
