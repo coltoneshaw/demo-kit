@@ -17,9 +17,9 @@ func sendMattermostMessage(channelID, text string) error {
 		return fmt.Errorf("FLIGHTS_MATTERMOST_WEBHOOK_URL environment variable not set")
 	}
 
-	// Create the webhook payload
+	// Create the webhook payload with explicit channel_id to override the default channel
 	payload := map[string]interface{}{
-		"channel_id": channelID,
+		"channel_id": channelID, // This ensures message goes to the specified channel
 		"text":       text,
 	}
 
@@ -33,6 +33,10 @@ func sendMattermostMessage(channelID, text string) error {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
+
+	// Log the webhook request for debugging
+	log.Printf("Sending webhook to channel ID: %s", channelID)
+	log.Printf("Webhook payload: %s", string(jsonPayload))
 
 	// Make the request
 	resp, err := client.Post(webhookURL, "application/json", bytes.NewBuffer(jsonPayload))

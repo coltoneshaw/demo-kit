@@ -16,25 +16,21 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("Starting FlightAware application...")
 
-	// Create subscription manager - use data dir for persistence if available
-	subscriptionsFile := "./flight_subscriptions.json"
-	dataDir := "/app/data"
-	
-	// Check if data directory exists and is writable
-	if _, err := os.Stat(dataDir); err == nil {
-		subscriptionsFile = dataDir + "/flight_subscriptions.json"
-		log.Printf("Using persistent storage at %s", subscriptionsFile)
-	} else {
-		log.Printf("Data directory not available, using local file: %s", subscriptionsFile)
-	}
+	// Create subscription manager with file path in the mounted volume
+	subscriptionsFile := "/app/data/flight_subscriptions.json"
+	log.Printf("Using subscriptions file: %s", subscriptionsFile)
 	
 	subscriptionManager := NewSubscriptionManager(subscriptionsFile)
-	log.Printf("Loaded %d subscriptions", len(subscriptionManager.Subscriptions))
 
 	// Restart existing subscriptions
-	for _, sub := range subscriptionManager.Subscriptions {
-		sub.StopChan = make(chan struct{})
-		go startFlightSubscription(sub, subscriptionManager)
+	subCount := len(subscriptionManager.Subscriptions)
+	if subCount > 0 {
+		log.Printf("Restarting %d existing subscriptions...", subCount)
+		for id, sub := range subscriptionManager.Subscriptions {
+			log.Printf("Restarting subscription %s for airport %s in channel %s", 
+				id, sub.Airport, sub.ChannelID)
+			go startFlightSubscription(sub, subscriptionManager)
+		}
 	}
 
 	// Set up graceful shutdown
@@ -107,8 +103,12 @@ func startFlightSubscription(sub *FlightSubscription, sm *SubscriptionManager) {
 	fetchAndSendFlights := func() {
 		// Get current time
 		now := time.Now()
-		// Get time 24 hours ago
-		past := now.Add(-24 * time.Hour)
+		// Get time 6 hours ago
+		past := now.Add(-6 * time.Hour)
+
+		// Log subscription details
+		log.Printf("Fetching flights for subscription %s (Airport: %s, ChannelID: %s)", 
+			sub.ID, sub.Airport, sub.ChannelID)
 
 		// Get flight data
 		flights, err := getDepartureFlights(sub.Airport, past.Unix(), now.Unix())
@@ -120,7 +120,8 @@ func startFlightSubscription(sub *FlightSubscription, sm *SubscriptionManager) {
 		// Format the response
 		response := formatFlightResponse(flights, sub.Airport, past.Unix(), now.Unix())
 
-		// Send to Mattermost
+		// Send to Mattermost with the subscription's channel ID
+		log.Printf("Sending flight update to channel ID: %s", sub.ChannelID)
 		err = sendMattermostMessage(sub.ChannelID, response)
 		if err != nil {
 			log.Printf("Error sending message to Mattermost for subscription %s: %v", sub.ID, err)

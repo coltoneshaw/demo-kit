@@ -52,12 +52,6 @@ type Client struct {
 	// TeamName is the name of the team to use for operations
 	TeamName string
 
-	// FlightAppURL is the webhook URL for the flight tracking app
-	FlightAppURL string
-
-	// WeatherAppURL is the webhook URL for the weather app
-	WeatherAppURL string
-
 	// UpdateWebhookConfig is a function that updates environment variables and restarts
 	// containers when webhook configurations change
 	UpdateWebhookConfig WebhookConfigFunction
@@ -80,9 +74,9 @@ type LogOptions struct {
 func handleAPIError(operation string, err error, resp *model.Response) error {
 	if err != nil {
 		if resp != nil {
-			return fmt.Errorf("%s: %v, response status code: %v", operation, err, resp.StatusCode)
+			return fmt.Errorf("%s: %w (status code: %v)", operation, err, resp.StatusCode)
 		}
-		return fmt.Errorf("%s: %v", operation, err)
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 	return nil
 }
@@ -116,14 +110,12 @@ func (c *Client) logf(format string, args ...interface{}) {
 // Returns a configured Client ready to connect to the Mattermost server.
 func NewClient(serverURL, adminUser, adminPass, teamName string, configPath string) *Client {
 	client := &Client{
-		API:           model.NewAPIv4Client(serverURL),
-		ServerURL:     serverURL,
-		AdminUser:     adminUser,
-		AdminPass:     adminPass,
-		TeamName:      teamName,
-		FlightAppURL:  "http://flightaware-app:8086/webhook",
-		WeatherAppURL: "http://weather-app:8085/webhook",
-		ConfigPath:    configPath,
+		API:        model.NewAPIv4Client(serverURL),
+		ServerURL:  serverURL,
+		AdminUser:  adminUser,
+		AdminPass:  adminPass,
+		TeamName:   teamName,
+		ConfigPath: configPath,
 	}
 
 	// Set up the default webhook configuration implementation
@@ -171,82 +163,88 @@ func (c *Client) WaitForStart() error {
 }
 
 // ensureUserIsAdmin ensures a user has system_admin role
-func (c *Client) ensureUserIsAdmin(user *model.User, username string) {
+func (c *Client) ensureUserIsAdmin(user *model.User) error {
 	if !strings.Contains(user.Roles, "system_admin") {
 		// Use UpdateUserRoles API to directly assign system_admin role
 		_, err := c.API.UpdateUserRoles(context.Background(), user.Id, "system_admin system_user")
 		if err != nil {
-			c.logf("❌ Failed to assign system_admin role to user '%s': %v\n", username, err)
-		} else {
-			c.logf("✅ Successfully assigned system_admin role to user '%s'\n", username)
+			c.logf("❌ Failed to assign system_admin role to user '%s': %v\n", user.Username, err)
+			return err
+		}
+		c.logf("✅ Successfully assigned system_admin role to user '%s'\n", user.Username)
+	}
+	return nil
+}
+
+// createOrGetUser creates a new user or returns an existing one
+func (c *Client) createOrGetUser(username, email, password, nickname string, isAdmin bool) (*model.User, error) {
+	// Check if user already exists
+	existingUsers, resp, err := c.API.GetUsers(context.Background(), 0, 1000, "")
+	if err != nil {
+		return nil, handleAPIError("failed to get users", err, resp)
+	}
+
+	// Look for existing user
+	for _, user := range existingUsers {
+		if user.Username == username {
+			c.logf("User '%s' already exists\n", username)
+
+			// Ensure admin status if needed
+			if isAdmin {
+				if err := c.ensureUserIsAdmin(user); err != nil {
+					return user, err // Still return the user even if admin role update fails
+				}
+			}
+
+			return user, nil
 		}
 	}
+
+	// Create the user
+	c.logf("Creating %s user...\n", username)
+
+	// Set roles if system admin
+	roles := "system_user" // Always include system_user
+	if isAdmin {
+		roles = "system_admin system_user"
+	}
+
+	newUser := &model.User{
+		Username: username,
+		Email:    email,
+		Password: password,
+		Nickname: nickname,
+		Roles:    roles,
+	}
+
+	createdUser, resp, err := c.API.CreateUser(context.Background(), newUser)
+	if err != nil {
+		return nil, handleAPIError(fmt.Sprintf("failed to create user '%s'", username), err, resp)
+	}
+
+	c.logf("✅ Successfully created user '%s' (ID: %s)\n", createdUser.Username, createdUser.Id)
+	return createdUser, nil
 }
 
 // CreateUsers creates test users from the config file if they don't exist.
 // If no config file is available, it falls back to creating default users.
 func (c *Client) CreateUsers() error {
-	// Get existing users from the server
-	existingUsers, resp, err := c.API.GetUsers(context.Background(), 0, 1000, "")
-	if err != nil {
-		return handleAPIError("failed to get users", err, resp)
-	}
-
-	// Create a map of existing users for quick lookup
-	existingUserMap := make(map[string]*model.User)
-	for _, user := range existingUsers {
-		existingUserMap[user.Username] = user
-	}
-
 	// If we have a config file, use it to create users
 	if c.Config != nil && len(c.Config.Users) > 0 {
 		c.log("Creating users from configuration file...")
 
 		// Process each user from the config
 		for _, userConfig := range c.Config.Users {
-			// Check if user already exists
-			if existingUser, exists := existingUserMap[userConfig.Username]; exists {
-				c.logf("User '%s' already exists\n", userConfig.Username)
-
-				// Ensure user has admin role if needed
-				if userConfig.IsSystemAdmin {
-					c.ensureUserIsAdmin(existingUser, userConfig.Username)
-				}
-				continue
-			}
-
-			// Create the user
-			c.logf("Creating %s user...\n", userConfig.Username)
-
-			// Set roles if system admin
-			roles := "system_user" // Always include system_user
-			if userConfig.IsSystemAdmin {
-				roles = "system_admin system_user"
-			}
-
-			newUser := &model.User{
-				Username: userConfig.Username,
-				Email:    userConfig.Email,
-				Password: userConfig.Password,
-				Nickname: userConfig.Nickname,
-				Roles:    roles,
-			}
-
-			createdUser, _, err := c.API.CreateUser(context.Background(), newUser)
+			_, err := c.createOrGetUser(
+				userConfig.Username,
+				userConfig.Email,
+				userConfig.Password,
+				userConfig.Nickname,
+				userConfig.IsSystemAdmin,
+			)
 			if err != nil {
-				c.logf("❌ Failed to create user '%s': %v\n", userConfig.Username, err)
-				continue
+				c.logf("❌ Error with user '%s': %v\n", userConfig.Username, err)
 			}
-
-			// Ensure the new user has admin role if needed
-			if userConfig.IsSystemAdmin {
-				c.ensureUserIsAdmin(createdUser, createdUser.Username)
-			}
-
-			c.logf("✅ Successfully created user '%s' (ID: %s)\n", createdUser.Username, createdUser.Id)
-
-			// Add the user to the map of existing users
-			existingUserMap[createdUser.Username] = createdUser
 		}
 
 		return nil
@@ -254,13 +252,53 @@ func (c *Client) CreateUsers() error {
 
 	// No default users if no config is available - we rely on the systemadmin user
 	c.log("No configuration file found. Using only default admin user.")
-
 	return nil
 }
 
-// CreateTeam creates teams from config or a default team if no config available
-func (c *Client) CreateTeam() error {
+// createOrGetTeam creates a new team or returns an existing one
+func (c *Client) createOrGetTeam(teamName, displayName, description, teamType string) (*model.Team, error) {
 	// Get all existing teams
+	existingTeams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
+	if err != nil {
+		return nil, handleAPIError("failed to get teams", err, resp)
+	}
+
+	// Check if team already exists
+	for _, team := range existingTeams {
+		if team.Name == teamName {
+			c.logf("Team '%s' already exists\n", teamName)
+			return team, nil
+		}
+	}
+
+	// Create the team
+	c.logf("Creating '%s' team...\n", teamName)
+
+	// Default to Open type if not specified
+	if teamType == "" {
+		teamType = model.TeamOpen
+	}
+
+	newTeam := &model.Team{
+		Name:        teamName,
+		DisplayName: displayName,
+		Description: description,
+		Type:        teamType,
+	}
+
+	createdTeam, createResp, err := c.API.CreateTeam(context.Background(), newTeam)
+	if err != nil {
+		return nil, handleAPIError("failed to create team", err, createResp)
+	}
+
+	c.logf("✅ Successfully created team '%s' (ID: %s)\n", createdTeam.Name, createdTeam.Id)
+	return createdTeam, nil
+}
+
+// CreateTeam creates teams from config or a default team if no config available
+// It also sets up webhooks and slash commands for each team as it's created
+func (c *Client) CreateTeam() error {
+	// Get all existing teams for user assignments
 	existingTeams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
 	if err != nil {
 		return handleAPIError("failed to get teams", err, resp)
@@ -272,94 +310,76 @@ func (c *Client) CreateTeam() error {
 		existingTeamMap[team.Name] = team
 	}
 
-	// Store created teams for user assignment later
-	createdTeams := make(map[string]*model.Team)
-
 	// If we have a config file with teams, use it to create teams
 	if c.Config != nil && len(c.Config.Teams) > 0 {
 		c.log("Creating teams from configuration file...")
 
 		// Process each team from the config
-		for teamName, teamConfig := range c.Config.Teams {
-			// Check if team already exists
-			if existingTeam, exists := existingTeamMap[teamConfig.Name]; exists {
-				c.logf("Team '%s' already exists\n", teamConfig.Name)
-				createdTeams[teamName] = existingTeam
-				continue
-			}
-
-			// Create the team
-			c.logf("Creating %s team...\n", teamConfig.Name)
-
-			// Default to Open type if not specified
-			teamType := model.TeamOpen
-			if teamConfig.Type != "" {
-				teamType = teamConfig.Type
-			}
-
-			newTeam := &model.Team{
-				Name:        teamConfig.Name,
-				DisplayName: teamConfig.DisplayName,
-				Description: teamConfig.Description,
-				Type:        teamType,
-			}
-
-			createdTeam, _, err := c.API.CreateTeam(context.Background(), newTeam)
+		for _, teamConfig := range c.Config.Teams {
+			team, err := c.createOrGetTeam(
+				teamConfig.Name,
+				teamConfig.DisplayName,
+				teamConfig.Description,
+				teamConfig.Type,
+			)
 			if err != nil {
-				c.logf("❌ Failed to create team '%s': %v\n", teamConfig.Name, err)
+				c.logf("❌ Error with team '%s': %v\n", teamConfig.Name, err)
 				continue
 			}
 
-			c.logf("✅ Successfully created team '%s' (ID: %s)\n", createdTeam.Name, createdTeam.Id)
-			createdTeams[teamName] = createdTeam
-			existingTeamMap[createdTeam.Name] = createdTeam
+			// Update the team maps
+			existingTeamMap[team.Name] = team
+
+			// Set up webhooks and slash commands for this team
+			if err := c.setupTeamResources(team, teamConfig); err != nil {
+				c.logf("⚠️ Warning: Error setting up resources for team '%s': %v\n", teamConfig.Name, err)
+			}
 		}
 	} else {
 		// Fallback to creating the default team if it doesn't exist
 		c.log("No team configuration found. Creating default team...")
 
-		// Check if default team exists
-		teamExists := false
-		var team *model.Team
-
-		for _, t := range existingTeams {
-			if t.Name == c.TeamName {
-				teamExists = true
-				team = t
-				break
-			}
+		team, err := c.createOrGetTeam(
+			c.TeamName,
+			"Test Team",
+			"",
+			model.TeamOpen,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create default team: %w", err)
 		}
 
-		// Create team if needed
-		if !teamExists {
-			c.logf("Creating %s team...\n", c.TeamName)
-			newTeam := &model.Team{
-				Name:        c.TeamName,
-				DisplayName: "Test Team",
-				Type:        model.TeamOpen,
-			}
-
-			var createResp *model.Response
-			team, createResp, err = c.API.CreateTeam(context.Background(), newTeam)
-			if err != nil {
-				return handleAPIError("failed to create team", err, createResp)
-			}
-			c.logf("✅ Successfully created team '%s' (ID: %s)\n", team.Name, team.Id)
-		} else {
-			c.logf("Team '%s' already exists\n", c.TeamName)
-		}
-
-		// Add default team to the created teams map
-		createdTeams[c.TeamName] = team
+		// Add default team to the map
+		existingTeamMap[team.Name] = team
 	}
 
 	// Return if we couldn't create any teams
-	if len(createdTeams) == 0 && len(existingTeamMap) == 0 {
+	if len(existingTeamMap) == 0 {
 		return fmt.Errorf("no teams could be created or found")
 	}
 
 	// Add users to teams according to config
-	return c.AddUsersToTeams(existingTeamMap)
+	if err := c.AddUsersToTeams(existingTeamMap); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// addUserToTeam adds a user to a team and handles common error cases
+func (c *Client) addUserToTeam(user *model.User, team *model.Team) error {
+	_, teamResp, err := c.API.AddTeamMember(context.Background(), team.Id, user.Id)
+	if err != nil {
+		// Check if the error is because the user is already a member
+		if teamResp != nil && teamResp.StatusCode == 400 {
+			c.logf("User '%s' is already a member of team '%s'\n", user.Username, team.Name)
+			return nil
+		}
+		return fmt.Errorf("failed to add user '%s' to team '%s': %w", user.Username, team.Name, err)
+	}
+
+	c.logf("✅ Added user '%s' to team '%s'\n", user.Username, team.Name)
+	return nil
 }
 
 // AddUsersToTeams adds users to teams according to the configuration
@@ -398,19 +418,10 @@ func (c *Client) AddUsersToTeams(teamMap map[string]*model.Team) error {
 					continue
 				}
 
-				// Add user to team
-				_, teamResp, err := c.API.AddTeamMember(context.Background(), team.Id, user.Id)
-				if err != nil {
-					// Check if the error is because the user is already a member
-					if teamResp.StatusCode == 400 {
-						c.logf("User '%s' is already a member of team '%s'\n", userConfig.Username, teamName)
-						continue
-					}
-					c.logf("❌ Failed to add user '%s' to team '%s': %v\n", userConfig.Username, teamName, err)
-					continue
+				// Add user to team with error handling
+				if err := c.addUserToTeam(user, team); err != nil {
+					c.logf("❌ %v\n", err)
 				}
-
-				c.logf("✅ Added user '%s' to team '%s'\n", userConfig.Username, teamName)
 			}
 		}
 	} else {
@@ -430,41 +441,46 @@ func (c *Client) AddUsersToTeams(teamMap map[string]*model.Team) error {
 			return nil
 		}
 
-		_, teamResp, err := c.API.AddTeamMember(context.Background(), team.Id, user.Id)
-		if err != nil {
-			// Check if the error is because the user is already a member
-			if teamResp.StatusCode == 400 {
-				c.logf("Default admin user is already a member of team '%s'\n", c.TeamName)
-				return nil
-			}
-			c.logf("❌ Failed to add default admin user to team '%s': %v\n", c.TeamName, err)
-			return nil
+		// Add admin user to team with error handling
+		if err := c.addUserToTeam(user, team); err != nil {
+			c.logf("❌ %v\n", err)
 		}
-
-		c.logf("✅ Added default admin user to team '%s'\n", c.TeamName)
 	}
 
 	return nil
 }
 
-// CreateSlashCommand creates a single slash command
-func (c *Client) CreateSlashCommand(teamID, trigger, url, displayName, description, username string) error {
+// createOrGetSlashCommand creates a slash command or returns if it already exists
+func (c *Client) createOrGetSlashCommand(teamID string, cmd *model.Command) (*model.Command, error) {
 	// Get existing commands
 	commands, resp, err := c.API.ListCommands(context.Background(), teamID, true)
 	if err != nil {
-		return handleAPIError("failed to list commands", err, resp)
+		return nil, handleAPIError("failed to list commands", err, resp)
 	}
 
 	// Check if command already exists
-	for _, cmd := range commands {
-		if cmd.Trigger == trigger {
-			c.logf("/%s command already exists\n", trigger)
-			return nil
+	for _, existingCmd := range commands {
+		if existingCmd.Trigger == cmd.Trigger {
+			c.logf("/%s command already exists\n", cmd.Trigger)
+			return existingCmd, nil
 		}
 	}
 
+	// Create the command
+	c.logf("Creating /%s slash command...\n", cmd.Trigger)
+
+	createdCmd, resp, err := c.API.CreateCommand(context.Background(), cmd)
+	if err != nil {
+		return nil, handleAPIError(fmt.Sprintf("failed to create /%s command", cmd.Trigger), err, resp)
+	}
+
+	c.logf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
+	return createdCmd, nil
+}
+
+// CreateSlashCommand creates a single slash command
+func (c *Client) CreateSlashCommand(teamID, trigger, url, displayName, description, username, autoCompleteHint string) error {
 	// Create command with autocomplete enabled
-	c.logf("Creating /%s slash command...\n", trigger)
 	cmd := &model.Command{
 		TeamId:           teamID,
 		Trigger:          trigger,
@@ -475,53 +491,40 @@ func (c *Client) CreateSlashCommand(teamID, trigger, url, displayName, descripti
 		Description:      description,
 		AutoComplete:     true,
 		AutoCompleteDesc: description,
-		AutoCompleteHint: getAutoCompleteHint(trigger),
+		AutoCompleteHint: autoCompleteHint,
 		Username:         username,
 	}
 
-	createdCmd, resp, err := c.API.CreateCommand(context.Background(), cmd)
-	if err != nil {
-		return handleAPIError(fmt.Sprintf("failed to create %s command", trigger), err, resp)
+	_, err := c.createOrGetSlashCommand(teamID, cmd)
+	return err
+}
+
+// CreateSlashCommandFromConfig creates a slash command from configuration
+// It takes command configuration from the config and applies it to create a slash command
+func (c *Client) CreateSlashCommandFromConfig(teamID string, cmdConfig SlashCommandConfig) error {
+	// Set default values for optional fields
+	autoCompleteDesc := cmdConfig.Description // Default to the description
+	if cmdConfig.AutoCompleteDesc != "" {
+		autoCompleteDesc = cmdConfig.AutoCompleteDesc
 	}
 
-	c.logf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
-	return nil
-}
-
-// getAutoCompleteHint provides appropriate command hints for slash command autocomplete
-func getAutoCompleteHint(trigger string) string {
-	switch trigger {
-	case "flights":
-		return "[departures/subscribe/unsubscribe/list] [--airport AIRPORT] [--frequency SECONDS]"
-	case "weather":
-		return "[location] [--subscribe] [--unsubscribe] [--update-frequency TIME]"
-	default:
-		return ""
+	// Create the command with configuration values
+	cmd := &model.Command{
+		TeamId:           teamID,
+		Trigger:          cmdConfig.Trigger,
+		Method:           "P",
+		URL:              cmdConfig.URL,
+		CreatorId:        "", // Will be set to current user
+		DisplayName:      cmdConfig.DisplayName,
+		Description:      cmdConfig.Description,
+		AutoComplete:     cmdConfig.AutoComplete,
+		AutoCompleteDesc: autoCompleteDesc,
+		AutoCompleteHint: cmdConfig.AutoCompleteHint,
+		Username:         cmdConfig.Username,
 	}
-}
 
-// CreateFlightCommand creates the flights slash command
-func (c *Client) CreateFlightCommand(teamID string) error {
-	return c.CreateSlashCommand(
-		teamID,
-		"flights",
-		c.FlightAppURL,
-		"Flight Departures",
-		"Get flight departures or subscribe to airport updates",
-		"flight-bot",
-	)
-}
-
-// CreateWeatherCommand creates the weather slash command
-func (c *Client) CreateWeatherCommand(teamID string) error {
-	return c.CreateSlashCommand(
-		teamID,
-		"weather",
-		c.WeatherAppURL,
-		"Weather Information",
-		"Get current weather information for a location",
-		"weather-bot",
-	)
+	_, err := c.createOrGetSlashCommand(teamID, cmd)
+	return err
 }
 
 // updateWebhookConfigImpl updates an app's webhook configuration in the environment.
@@ -587,8 +590,8 @@ func (c *Client) updateWebhookConfigImpl(webhookID, appName, envVarName, contain
 	return nil
 }
 
-// CreateWebhook creates a single incoming webhook
-func (c *Client) CreateWebhook(channelID, displayName, description, username string) (*model.IncomingWebhook, error) {
+// createOrGetWebhook creates a webhook or returns an existing one with the same name
+func (c *Client) createOrGetWebhook(channelID, displayName, description, username string) (*model.IncomingWebhook, error) {
 	// Check if webhook already exists
 	hooks, resp, err := c.API.GetIncomingWebhooks(context.Background(), 0, 1000, "")
 	if err != nil {
@@ -619,12 +622,19 @@ func (c *Client) CreateWebhook(channelID, displayName, description, username str
 	return newHook, nil
 }
 
-// CreateAppWebhook creates an incoming webhook for an app and updates its configuration
-func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, username, envVarName, containerName string) error {
+// CreateWebhookFromConfig creates an incoming webhook from configuration
+// It takes webhook configuration from the config and applies it to create a webhook
+// Additionally, it updates environment variables and restarts containers as needed
+func (c *Client) CreateWebhookFromConfig(channelID string, webhookConfig WebhookConfig) error {
 	// Create the webhook
-	newHook, err := c.CreateWebhook(channelID, displayName, description, username)
+	newHook, err := c.createOrGetWebhook(
+		channelID,
+		webhookConfig.DisplayName,
+		webhookConfig.Description,
+		webhookConfig.Username,
+	)
 	if err != nil {
-		return fmt.Errorf("failed to create %s webhook: %w", appName, err)
+		return fmt.Errorf("failed to create '%s' webhook: %w", webhookConfig.DisplayName, err)
 	}
 
 	// If webhook already existed but we didn't get its ID, we can't update the config
@@ -633,83 +643,16 @@ func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, 
 	}
 
 	// Update the webhook configuration using the function reference
-	if err := c.UpdateWebhookConfig(newHook.Id, appName, envVarName, containerName); err != nil {
-		return fmt.Errorf("failed to update webhook config for %s: %w", appName, err)
+	if err := c.UpdateWebhookConfig(
+		newHook.Id,
+		webhookConfig.DisplayName,
+		webhookConfig.EnvVariable,
+		webhookConfig.ContainerName,
+	); err != nil {
+		return fmt.Errorf("failed to update webhook config for '%s': %w", webhookConfig.DisplayName, err)
 	}
 
 	return nil
-}
-
-// AppConfig holds the configuration for an app integration with Mattermost.
-// It contains all parameters needed to create webhooks and commands for an application.
-type AppConfig struct {
-	// AppName is the display name of the application (e.g., "Weather app")
-	AppName string
-
-	// WebhookName is the name for the webhook in Mattermost
-	WebhookName string
-
-	// WebhookDesc is the description for the webhook
-	WebhookDesc string
-
-	// EnvVarName is the environment variable name to store the webhook URL
-	// (e.g., "WEATHER_MATTERMOST_WEBHOOK_URL")
-	EnvVarName string
-
-	// ContainerName is the Docker container name to restart after config update
-	ContainerName string
-
-	// CommandCreator is a function that creates the slash command for this app
-	// It takes a teamID and returns an error if creation fails
-	CommandCreator func(string) error
-}
-
-// CreateApp sets up an app with webhook and slash command
-func (c *Client) CreateApp(channelID, teamID string, config AppConfig) error {
-	// Create webhook
-	err := c.CreateAppWebhook(
-		channelID,
-		config.AppName,
-		config.WebhookName,
-		config.WebhookDesc,
-		"professor", // Common username for app integrations
-		config.EnvVarName,
-		config.ContainerName,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create %s webhook: %v", config.AppName, err)
-	}
-
-	// Create slash command
-	if err := config.CommandCreator(teamID); err != nil {
-		return fmt.Errorf("failed to create %s command: %v", config.AppName, err)
-	}
-
-	return nil
-}
-
-// CreateWeatherApp sets up the weather app (webhook and slash command)
-func (c *Client) CreateWeatherApp(channelID, teamID string) error {
-	return c.CreateApp(channelID, teamID, AppConfig{
-		AppName:        "Weather app",
-		WebhookName:    "weather",
-		WebhookDesc:    "Weather responses",
-		EnvVarName:     "WEATHER_MATTERMOST_WEBHOOK_URL",
-		ContainerName:  "weather-app",
-		CommandCreator: c.CreateWeatherCommand,
-	})
-}
-
-// CreateFlightApp sets up the flight app (webhook and slash command)
-func (c *Client) CreateFlightApp(channelID, teamID string) error {
-	return c.CreateApp(channelID, teamID, AppConfig{
-		AppName:        "Flight app",
-		WebhookName:    "flight-app",
-		WebhookDesc:    "Flight departures",
-		EnvVarName:     "FLIGHTS_MATTERMOST_WEBHOOK_URL",
-		ContainerName:  "flightaware-app",
-		CommandCreator: c.CreateFlightCommand,
-	})
 }
 
 // GetTeamAndChannel finds a team and channel by name
@@ -751,185 +694,115 @@ func (c *Client) GetTeamAndChannel(channelName string) (teamID, channelID string
 	return teamID, channelID, nil
 }
 
-// SetupWebhooks sets up webhooks and slash commands for all teams
-func (c *Client) SetupWebhooks() error {
-	// Get all existing teams
-	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
-	if err != nil {
-		return handleAPIError("failed to get teams", err, resp)
-	}
-
-	// Create a map of team name to team ID for quick lookup
-	teamMap := make(map[string]*model.Team)
-	for _, team := range teams {
-		teamMap[team.Name] = team
-	}
-
-	// If we have team-specific configurations, use them
-	if c.Config != nil && len(c.Config.Teams) > 0 {
-		c.log("Setting up team-specific webhooks and slash commands from configuration")
-
-		// Process each team from the config
-		for _, teamConfig := range c.Config.Teams {
-			// Verify the team exists
-			team, exists := teamMap[teamConfig.Name]
-			if !exists {
-				c.logf("❌ Team '%s' not found, skipping webhook/command setup\n", teamConfig.Name)
-				continue
-			}
-
-			teamID := team.Id
-			c.logf("Setting up webhooks and slash commands for team '%s' (ID: %s)\n", teamConfig.Name, teamID)
-
-			// Get the channels for this team
-			channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), teamID, 0, 100, "")
-			if err != nil {
-				c.logf("❌ Failed to get channels for team '%s': %v\n", teamConfig.Name, err)
-				continue
-			}
-
-			// Create a map of channel name to channel ID for quick lookup
-			channelMap := make(map[string]*model.Channel)
-			for _, channel := range channels {
-				channelMap[channel.Name] = channel
-			}
-
-			// Set up webhooks for this team
-			for _, webhook := range teamConfig.Webhooks {
-				// Verify the channel exists
-				channel, exists := channelMap[webhook.ChannelName]
-				if !exists {
-					c.logf("❌ Channel '%s' not found in team '%s', skipping webhook '%s'\n",
-						webhook.ChannelName, teamConfig.Name, webhook.DisplayName)
-					continue
-				}
-
-				c.logf("Creating webhook '%s' in channel '%s'\n", webhook.DisplayName, webhook.ChannelName)
-
-				// Create the webhook
-				err := c.CreateAppWebhook(
-					channel.Id,
-					webhook.DisplayName, // Use as both app name and webhook name
-					webhook.DisplayName,
-					webhook.Description,
-					webhook.Username,
-					webhook.EnvVariable,
-					webhook.ContainerName,
-				)
-
-				if err != nil {
-					c.logf("❌ Failed to create webhook '%s': %v\n", webhook.DisplayName, err)
-					continue
-				}
-
-				c.logf("✅ Successfully created webhook '%s' in channel '%s'\n",
-					webhook.DisplayName, webhook.ChannelName)
-			}
-
-			// Set up slash commands for this team
-			for _, cmd := range teamConfig.SlashCommands {
-				c.logf("Creating /%s slash command for team '%s'\n", cmd.Trigger, teamConfig.Name)
-
-				// Determine autocomplete hint if not specified
-				autoCompleteHint := cmd.AutoCompleteHint
-				if autoCompleteHint == "" && cmd.AutoComplete {
-					autoCompleteHint = getAutoCompleteHint(cmd.Trigger)
-				}
-
-				// Determine autocomplete description if not specified
-				autoCompleteDesc := cmd.AutoCompleteDesc
-				if autoCompleteDesc == "" && cmd.AutoComplete {
-					autoCompleteDesc = cmd.Description
-				}
-
-				// Create the slash command
-				slashCmd := &model.Command{
-					TeamId:           teamID,
-					Trigger:          cmd.Trigger,
-					Method:           "P",
-					URL:              cmd.URL,
-					CreatorId:        "", // Will be set to current user
-					DisplayName:      cmd.DisplayName,
-					Description:      cmd.Description,
-					AutoComplete:     cmd.AutoComplete,
-					AutoCompleteDesc: autoCompleteDesc,
-					AutoCompleteHint: autoCompleteHint,
-					Username:         cmd.Username,
-				}
-
-				createdCmd, _, err := c.API.CreateCommand(context.Background(), slashCmd)
-				if err != nil {
-					c.logf("❌ Failed to create /%s command: %v\n", cmd.Trigger, err)
-					continue
-				}
-
-				c.logf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
-			}
-		}
-
-		return nil
-	}
-
-	// Fallback to creating default webhooks if no config is available
-	c.log("No team-specific configuration found. Setting up default apps...")
-
-	// Find the default team
-	team, exists := teamMap[c.TeamName]
-	if !exists {
-		return fmt.Errorf("default team '%s' not found", c.TeamName)
+// setupTeamResources sets up both webhooks and slash commands for a specific team
+// This is called immediately after creating or finding a team to ensure resources are set up
+func (c *Client) setupTeamResources(team *model.Team, teamConfig TeamConfig) error {
+	if team == nil {
+		return fmt.Errorf("team is nil, cannot set up resources")
 	}
 
 	teamID := team.Id
+	c.logf("Setting up resources for team '%s' (ID: %s)\n", team.Name, teamID)
 
-	// Get the channels for the team
-	channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), teamID, 0, 100, "")
-	if err != nil {
-		return handleAPIError("failed to get channels", err, resp)
+	// Set up webhooks for this team
+	if err := c.setupTeamWebhooks(team, teamConfig); err != nil {
+		return fmt.Errorf("failed to set up webhooks for team '%s': %w", team.Name, err)
 	}
 
-	// Find the off-topic channel
-	var channelID string
-	for _, channel := range channels {
-		if channel.Name == "off-topic" {
-			channelID = channel.Id
-			break
-		}
-	}
-
-	if channelID == "" {
-		return fmt.Errorf("off-topic channel not found in team %s", c.TeamName)
-	}
-
-	c.logf("Found off-topic channel ID: %s in team %s\n", channelID, c.TeamName)
-
-	c.log("Setting up Weather app...")
-	if err := c.CreateWeatherApp(channelID, teamID); err != nil {
-		c.logf("❌ Failed to setup weather app: %v\n", err)
-	}
-
-	c.log("Setting up Flight app...")
-	if err := c.CreateFlightApp(channelID, teamID); err != nil {
-		c.logf("❌ Failed to setup flight app: %v\n", err)
+	// Set up slash commands for this team
+	if err := c.setupTeamSlashCommands(team, teamConfig); err != nil {
+		return fmt.Errorf("failed to set up slash commands for team '%s': %w", team.Name, err)
 	}
 
 	return nil
 }
 
-// SetupTestData sets up test data in Mattermost
+// setupTeamWebhooks creates webhooks for a specific team
+func (c *Client) setupTeamWebhooks(team *model.Team, teamConfig TeamConfig) error {
+	teamID := team.Id
+	c.logf("Setting up webhooks for team '%s' (ID: %s)\n", team.Name, teamID)
+
+	// Get the channels for this team
+	channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), teamID, 0, 100, "")
+	if err != nil {
+		return fmt.Errorf("failed to get channels for team '%s': %w", team.Name, err)
+	}
+
+	// Create a map of channel name to channel ID for quick lookup
+	channelMap := make(map[string]*model.Channel)
+	for _, channel := range channels {
+		channelMap[channel.Name] = channel
+	}
+
+	// Set up webhooks for this team
+	for _, webhook := range teamConfig.Webhooks {
+		// Verify the channel exists
+		channel, exists := channelMap[webhook.ChannelName]
+		if !exists {
+			c.logf("❌ Channel '%s' not found in team '%s', skipping webhook '%s'\n",
+				webhook.ChannelName, team.Name, webhook.DisplayName)
+			continue
+		}
+
+		c.logf("Creating webhook '%s' in channel '%s'\n", webhook.DisplayName, webhook.ChannelName)
+
+		// Create the webhook using the configuration
+		err := c.CreateWebhookFromConfig(channel.Id, webhook)
+		if err != nil {
+			c.logf("❌ Failed to create webhook '%s': %v\n", webhook.DisplayName, err)
+			continue
+		}
+
+		c.logf("✅ Successfully created webhook '%s' in channel '%s'\n",
+			webhook.DisplayName, webhook.ChannelName)
+	}
+
+	return nil
+}
+
+// setupTeamSlashCommands creates slash commands for a specific team
+func (c *Client) setupTeamSlashCommands(team *model.Team, teamConfig TeamConfig) error {
+	teamID := team.Id
+	c.logf("Setting up slash commands for team '%s' (ID: %s)\n", team.Name, teamID)
+
+	// Set up slash commands for this team
+	for _, cmd := range teamConfig.SlashCommands {
+		c.logf("Creating /%s slash command for team '%s'\n", cmd.Trigger, team.Name)
+
+		// Create the slash command using the configuration
+		err := c.CreateSlashCommandFromConfig(teamID, cmd)
+		if err != nil {
+			c.logf("❌ Failed to create /%s command: %v\n", cmd.Trigger, err)
+			continue
+		}
+	}
+
+	return nil
+}
+
+// SetupTestData sets up test data in Mattermost based on configuration
 func (c *Client) SetupTestData() error {
 	c.log("===========================================")
 	c.log("Setting up test Data for Mattermost")
 	c.log("===========================================")
 
+	// Load configuration if not already loaded
+	if c.Config == nil {
+		config, err := LoadConfig(c.ConfigPath)
+		if err != nil {
+			c.logf("❌ Failed to load config: %v, using defaults\n", err)
+		} else {
+			c.Config = config
+		}
+	}
+
 	if err := c.CreateUsers(); err != nil {
 		return err
 	}
 
+	// Create teams and set up webhooks and slash commands
+	// The CreateTeam function now handles webhook and slash command setup
 	if err := c.CreateTeam(); err != nil {
-		return err
-	}
-
-	if err := c.SetupWebhooks(); err != nil {
 		return err
 	}
 
@@ -939,7 +812,7 @@ func (c *Client) SetupTestData() error {
 // CreateDefaultAdminUser creates the single default admin user using mmctl
 func (c *Client) CreateDefaultAdminUser() error {
 	c.log("Creating default system admin user with mmctl...")
-	
+
 	// Use Docker exec to run mmctl command
 	cmd := exec.Command("docker", "exec", "-i", "mattermost", "mmctl", "user", "create",
 		"--email", DefaultAdminUsername+"@example.com",
@@ -947,7 +820,7 @@ func (c *Client) CreateDefaultAdminUser() error {
 		"--password", DefaultAdminPassword,
 		"--system-admin",
 		"--local")
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Check if error is because user already exists (which is fine)
@@ -957,16 +830,33 @@ func (c *Client) CreateDefaultAdminUser() error {
 		}
 		return fmt.Errorf("failed to create default admin user with mmctl: %v, output: %s", err, output)
 	}
-	
+
 	c.log("✅ Successfully created default admin user with mmctl")
 	return nil
 }
 
-// Setup performs the main setup
+// Setup performs the main setup based on configuration
 func (c *Client) Setup() error {
 	// Safety check - make sure the client and API are properly initialized
 	if c == nil || c.API == nil {
 		return fmt.Errorf("client not properly initialized")
+	}
+
+	// Load configuration if not already loaded
+	if c.Config == nil && c.ConfigPath != "" {
+		config, err := LoadConfig(c.ConfigPath)
+		if err != nil {
+			c.logf("Failed to load config from %s: %v\n", c.ConfigPath, err)
+			// Try default path if specific path fails
+			config, err = LoadConfig(DefaultConfigPath)
+			if err != nil {
+				c.logf("Failed to load config from default path: %v\n", err)
+			} else {
+				c.Config = config
+			}
+		} else {
+			c.Config = config
+		}
 	}
 
 	if err := c.WaitForStart(); err != nil {
@@ -999,7 +889,7 @@ func (c *Client) EchoLogins() {
 	fmt.Println("- System admin")
 	fmt.Printf("     - username: %s\n", DefaultAdminUsername)
 	fmt.Printf("     - password: %s\n", DefaultAdminPassword)
-	
+
 	// If we have configuration users, display them
 	if c.Config != nil && len(c.Config.Users) > 0 {
 		fmt.Println("- Config users:")
@@ -1008,7 +898,7 @@ func (c *Client) EchoLogins() {
 			fmt.Printf("     - password: %s\n", user.Password)
 		}
 	}
-	
+
 	fmt.Println("- LDAP or SAML account:")
 	fmt.Println("     - username: professor")
 	fmt.Println("     - password: professor")

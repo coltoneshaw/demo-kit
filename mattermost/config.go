@@ -87,9 +87,13 @@ type SlashCommandConfig struct {
 	AutoComplete bool `json:"autoComplete"`
 
 	// AutoCompleteDesc is the description shown in autocomplete
+	// If not specified but AutoComplete is true, the Description field is used
 	AutoCompleteDesc string `json:"autoCompleteDesc,omitempty"`
 
-	// AutoCompleteHint is the hint shown in autocomplete
+	// AutoCompleteHint is the hint shown in autocomplete to guide users on command syntax
+	// For example, "[location] [--subscribe]" shows users the expected parameters
+	// If not specified but AutoComplete is true, built-in defaults are used for standard
+	// commands (weather/flights) based on the trigger name
 	AutoCompleteHint string `json:"autoCompleteHint,omitempty"`
 }
 
@@ -141,6 +145,16 @@ func LoadConfig(path string) (*Config, error) {
 	// Validate the config
 	if err := validateConfig(&config); err != nil {
 		return nil, err
+	}
+
+	// Log any slash command autocomplete hints found in the config
+	for _, team := range config.Teams {
+		for _, cmd := range team.SlashCommands {
+			if cmd.AutoComplete && cmd.AutoCompleteHint != "" {
+				fmt.Printf("Loaded autocomplete hint for command /%s: %s\n", 
+					cmd.Trigger, cmd.AutoCompleteHint)
+			}
+		}
 	}
 
 	return &config, nil

@@ -38,8 +38,8 @@ func handleFlightDepartureRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		// Default to 24 hours ago
-		start = time.Now().Add(-24 * time.Hour).Unix()
+		// Default to 6 hours ago
+		start = time.Now().Add(-6 * time.Hour).Unix()
 	}
 
 	if endStr != "" {
@@ -149,8 +149,8 @@ func handleDeparturesCommand(w http.ResponseWriter, args []string, channelID, us
 
 	// Default end time to now
 	end = time.Now().Unix()
-	// Default start time to 24 hours ago
-	start = time.Now().Add(-24 * time.Hour).Unix()
+	// Default start time to 6 hours ago
+	start = time.Now().Add(-6 * time.Hour).Unix()
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -226,7 +226,7 @@ func sendErrorResponse(w http.ResponseWriter, channelID, message string) {
 func sendHelpResponse(w http.ResponseWriter, channelID string) {
 	helpText := "**Flight Departures Bot Commands**\n\n" +
 		"**One-time Queries:**\n" +
-		"- `/flights departures --airport [code]` - Get departures from an airport (last 24 hours)\n" +
+		"- `/flights departures --airport [code]` - Get departures from an airport (last 6 hours)\n" +
 		"- `/flights departures --airport [code] --start [unix_time] --end [unix_time]` - Get departures for a specific time range\n\n" +
 		"**Subscription Commands:**\n" +
 		"- `/flights subscribe --airport [code] --frequency [seconds]` - Subscribe to airport departures\n" +

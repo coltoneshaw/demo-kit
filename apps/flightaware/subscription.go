@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -37,13 +38,13 @@ func NewSubscriptionManager(filePath string) *SubscriptionManager {
 
 	// Load existing subscriptions from file
 	if err := sm.LoadFromFile(); err != nil {
-		log.Printf("Error loading subscriptions: %v", err)
+		log.Printf("Failed to load subscriptions from file: %v", err)
 	}
 
 	return sm
 }
 
-// SaveToFile saves subscriptions to a file
+// SaveToFile saves all subscriptions to a JSON file
 func (sm *SubscriptionManager) SaveToFile() error {
 	sm.Mutex.RLock()
 	defer sm.Mutex.RUnlock()
@@ -54,24 +55,22 @@ func (sm *SubscriptionManager) SaveToFile() error {
 		return fmt.Errorf("failed to create directory: %v", err)
 	}
 
-	// Open file for writing
-	file, err := os.Create(sm.FilePath)
+	// Marshal to JSON
+	data, err := json.MarshalIndent(sm, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to create file: %v", err)
-	}
-	defer file.Close()
-
-	// Encode subscriptions to JSON
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(sm); err != nil {
-		return fmt.Errorf("failed to encode subscriptions: %v", err)
+		return fmt.Errorf("failed to marshal subscriptions: %v", err)
 	}
 
+	// Write to file
+	if err := os.WriteFile(sm.FilePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write subscriptions file: %v", err)
+	}
+
+	log.Printf("Saved %d subscriptions to %s", len(sm.Subscriptions), sm.FilePath)
 	return nil
 }
 
-// LoadFromFile loads subscriptions from a file
+// LoadFromFile loads subscriptions from a JSON file
 func (sm *SubscriptionManager) LoadFromFile() error {
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
@@ -82,22 +81,38 @@ func (sm *SubscriptionManager) LoadFromFile() error {
 		return nil // Not an error, just no file yet
 	}
 
-	// Open file for reading
-	file, err := os.Open(sm.FilePath)
+	// Read file
+	data, err := os.ReadFile(sm.FilePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %v", err)
+		return fmt.Errorf("failed to read subscriptions file: %v", err)
 	}
-	defer file.Close()
 
-	// Decode subscriptions from JSON
+	// If file is empty or too small, no valid subscriptions to load
+	if len(data) < 5 { // Minimum valid JSON would be {}
+		log.Printf("Empty or invalid subscriptions file at %s", sm.FilePath)
+		return nil
+	}
+
+	// Unmarshal JSON
 	var loadedManager SubscriptionManager
-	if err := json.NewDecoder(file).Decode(&loadedManager); err != nil {
-		return fmt.Errorf("failed to decode subscriptions: %v", err)
+	if err := json.Unmarshal(data, &loadedManager); err != nil {
+		log.Printf("Failed to unmarshal subscriptions file: %v", err)
+		// Create backup of corrupted file
+		backupPath := sm.FilePath + ".corrupted"
+		os.WriteFile(backupPath, data, 0644)
+		log.Printf("Backed up corrupted file to %s", backupPath)
+		return err
 	}
 
-	// Copy subscriptions to this manager
+	// Copy subscriptions to current manager
 	sm.Subscriptions = loadedManager.Subscriptions
 
+	// Initialize StopChan for each subscription
+	for _, sub := range sm.Subscriptions {
+		sub.StopChan = make(chan struct{})
+	}
+
+	log.Printf("Loaded %d subscriptions from %s", len(sm.Subscriptions), sm.FilePath)
 	return nil
 }
 
