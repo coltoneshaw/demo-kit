@@ -12,9 +12,9 @@ import (
 // sendMattermostMessage sends a message to a Mattermost channel
 func sendMattermostMessage(channelID, text string) error {
 	// Get the Mattermost webhook URL from environment variable
-	webhookURL := os.Getenv("MATTERMOST_WEBHOOK_URL")
+	webhookURL := os.Getenv("FLIGHTS_MATTERMOST_WEBHOOK_URL")
 	if webhookURL == "" {
-		return fmt.Errorf("MATTERMOST_WEBHOOK_URL environment variable not set")
+		return fmt.Errorf("FLIGHTS_MATTERMOST_WEBHOOK_URL environment variable not set")
 	}
 
 	// Create the webhook payload

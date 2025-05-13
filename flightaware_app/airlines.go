@@ -24,7 +24,7 @@ var AirlineMap = map[string]AirlineInfo{
 	"SKW": {Name: "SkyWest Airlines", Country: "United States", IATACode: "OO"},
 	"NKS": {Name: "Spirit Airlines", Country: "United States", IATACode: "NK"},
 	"HAL": {Name: "Hawaiian Airlines", Country: "United States", IATACode: "HA"},
-	
+
 	// Major European Airlines
 	"DLH": {Name: "Lufthansa", Country: "Germany", IATACode: "LH"},
 	"AFR": {Name: "Air France", Country: "France", IATACode: "AF"},
@@ -39,7 +39,7 @@ var AirlineMap = map[string]AirlineInfo{
 	"RYR": {Name: "Ryanair", Country: "Ireland", IATACode: "FR"},
 	"WZZ": {Name: "Wizz Air", Country: "Hungary", IATACode: "W6"},
 	"NLY": {Name: "Air UK", Country: "United Kingdom", IATACode: "UK"},
-	
+
 	// Major Asian Airlines
 	"CPA": {Name: "Cathay Pacific", Country: "Hong Kong", IATACode: "CX"},
 	"CCA": {Name: "Air China", Country: "China", IATACode: "CA"},
@@ -54,12 +54,11 @@ var AirlineMap = map[string]AirlineInfo{
 	"UAE": {Name: "Emirates", Country: "United Arab Emirates", IATACode: "EK"},
 	"ETD": {Name: "Etihad Airways", Country: "United Arab Emirates", IATACode: "EY"},
 	"QTR": {Name: "Qatar Airways", Country: "Qatar", IATACode: "QR"},
-	
+
 	// Major Oceania Airlines
 	"QFA": {Name: "Qantas", Country: "Australia", IATACode: "QF"},
 	"JST": {Name: "Jetstar Airways", Country: "Australia", IATACode: "JQ"},
 	"ANZ": {Name: "Air New Zealand", Country: "New Zealand", IATACode: "NZ"},
-	"VIR": {Name: "Virgin Australia", Country: "Australia", IATACode: "VA"},
 }
 
 // AircraftTypeMap maps aircraft type codes to their full names
@@ -76,7 +75,7 @@ var AircraftTypeMap = map[string]string{
 	"A359": "Airbus A350-900",
 	"A35K": "Airbus A350-1000",
 	"A388": "Airbus A380-800",
-	
+
 	// Boeing
 	"B737": "Boeing 737",
 	"B738": "Boeing 737-800",
@@ -95,13 +94,13 @@ var AircraftTypeMap = map[string]string{
 	"B788": "Boeing 787-8",
 	"B789": "Boeing 787-9",
 	"B78X": "Boeing 787-10",
-	
+
 	// Embraer
 	"E170": "Embraer E170",
 	"E175": "Embraer E175",
 	"E190": "Embraer E190",
 	"E195": "Embraer E195",
-	
+
 	// Bombardier
 	"CRJ2": "Bombardier CRJ-200",
 	"CRJ7": "Bombardier CRJ-700",
@@ -114,7 +113,7 @@ var AircraftTypeMap = map[string]string{
 func GetAirlineInfo(callsign string) (string, string) {
 	// Clean up callsign
 	callsign = strings.TrimSpace(callsign)
-	
+
 	// Most airline callsigns follow the pattern of 3-letter ICAO code followed by numbers
 	// For example: "DLH123" for Lufthansa flight 123
 	if len(callsign) >= 3 {
@@ -123,7 +122,7 @@ func GetAirlineInfo(callsign string) (string, string) {
 			return airline.Name, airline.Country
 		}
 	}
-	
+
 	return "", ""
 }
 
@@ -133,11 +132,11 @@ func GetAirlineInfo(callsign string) (string, string) {
 func GetAircraftType(callsign string) string {
 	// This is a placeholder - in reality, you would need to query a flight database
 	// to get the actual aircraft type for a specific flight
-	
+
 	// For demonstration purposes, we'll return a few common types based on airline
 	if len(callsign) >= 3 {
 		airlineCode := callsign[0:3]
-		
+
 		// Just some examples based on common fleet types
 		switch airlineCode {
 		case "DLH": // Lufthansa
@@ -162,6 +161,6 @@ func GetAircraftType(callsign string) string {
 			return "Boeing 737 or Airbus A330"
 		}
 	}
-	
+
 	return "Unknown"
 }

@@ -107,13 +107,13 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 		}
 
 		// Get airline information
-		airlineName, country := GetAirlineInfo(callsign)
+		airlineName, _ := GetAirlineInfo(callsign)
 		if airlineName == "" {
 			airlineName = "Unknown"
 		}
-		
+
 		// Add row to table
-		sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s | %s |\n", 
+		sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s | %s |\n",
 			callsign, airlineName, departureTime, destination, duration))
 	}
 
