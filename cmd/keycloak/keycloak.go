@@ -106,7 +106,12 @@ func main() {
 		},
 	}
 
+	// Add subcommands to keycloakCmd
+	keycloakCmd.AddCommand(RestoreCmd)
+	keycloakCmd.AddCommand(BackupCmd)
+
 	if err := keycloakCmd.Execute(); err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }
