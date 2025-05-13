@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 // WeatherResponse represents the response from the Tomorrow.io API
@@ -52,6 +54,89 @@ type MattermostResponse struct {
 	ChannelID    string `json:"channel_id,omitempty"`
 }
 
+// Subscription represents a weather subscription for a channel
+type Subscription struct {
+	ID               string        // Unique identifier for the subscription
+	Location         string        // Location to get weather for
+	ChannelID        string        // Channel to post updates to
+	UserID           string        // User who created the subscription
+	UpdateFrequency  time.Duration // How often to update
+	LastUpdated      time.Time     // When the subscription was last updated
+	StopChan         chan struct{} // Channel to signal stopping the subscription
+}
+
+// SubscriptionManager manages all active subscriptions
+type SubscriptionManager struct {
+	Subscriptions map[string]*Subscription // Map of subscription ID to subscription
+	Mutex         sync.RWMutex             // Mutex to protect the map
+}
+
+// NewSubscriptionManager creates a new subscription manager
+func NewSubscriptionManager() *SubscriptionManager {
+	return &SubscriptionManager{
+		Subscriptions: make(map[string]*Subscription),
+	}
+}
+
+// AddSubscription adds a new subscription
+func (sm *SubscriptionManager) AddSubscription(sub *Subscription) {
+	sm.Mutex.Lock()
+	defer sm.Mutex.Unlock()
+	sm.Subscriptions[sub.ID] = sub
+}
+
+// RemoveSubscription removes a subscription
+func (sm *SubscriptionManager) RemoveSubscription(id string) bool {
+	sm.Mutex.Lock()
+	defer sm.Mutex.Unlock()
+	
+	sub, exists := sm.Subscriptions[id]
+	if exists {
+		// Signal the subscription to stop
+		close(sub.StopChan)
+		// Remove from map
+		delete(sm.Subscriptions, id)
+		return true
+	}
+	return false
+}
+
+// GetSubscription gets a subscription by ID
+func (sm *SubscriptionManager) GetSubscription(id string) (*Subscription, bool) {
+	sm.Mutex.RLock()
+	defer sm.Mutex.RUnlock()
+	sub, exists := sm.Subscriptions[id]
+	return sub, exists
+}
+
+// GetSubscriptionsForChannel gets all subscriptions for a channel
+func (sm *SubscriptionManager) GetSubscriptionsForChannel(channelID string) []*Subscription {
+	sm.Mutex.RLock()
+	defer sm.Mutex.RUnlock()
+	
+	var subs []*Subscription
+	for _, sub := range sm.Subscriptions {
+		if sub.ChannelID == channelID {
+			subs = append(subs, sub)
+		}
+	}
+	return subs
+}
+
+// GetSubscriptionsForUser gets all subscriptions created by a user
+func (sm *SubscriptionManager) GetSubscriptionsForUser(userID string) []*Subscription {
+	sm.Mutex.RLock()
+	defer sm.Mutex.RUnlock()
+	
+	var subs []*Subscription
+	for _, sub := range sm.Subscriptions {
+		if sub.UserID == userID {
+			subs = append(subs, sub)
+		}
+	}
+	return subs
+}
+
 // WeatherCodeDescription maps weather codes to human-readable descriptions
 var WeatherCodeDescription = map[int]string{
 	1000: "Clear",
@@ -87,6 +172,9 @@ func main() {
 		apiKey = "c5AeEo7A30nZmTHZkCs0fQXT8JcUFWJC" // Fallback to default if not set
 	}
 	log.Printf("Using API key: %s", apiKey)
+	
+	// Create subscription manager
+	subscriptionManager := NewSubscriptionManager()
 
 	// Set up HTTP server
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -164,38 +252,218 @@ func main() {
 		log.Printf("Processing weather request from user: %s (%s) in channel: %s (%s) with text: %s", 
 			userName, userID, channelName, channelID, text)
 		
-		// Get location from text parameter
+		// Parse command flags
 		var location string
-		if text != "" {
-			// Check if text contains "--location" flag
-			if len(text) > 11 && text[:11] == "--location " {
-				location = text[11:] // Extract the location after "--location "
-				log.Printf("Extracted location from flag: %s", location)
-			} else {
-				location = text
+		var subscribe bool
+		var unsubscribe bool
+		var updateFrequency time.Duration
+		var subscriptionID string
+		
+		// Split text into words
+		words := strings.Fields(text)
+		for i := 0; i < len(words); i++ {
+			switch words[i] {
+			case "--location":
+				if i+1 < len(words) {
+					// Collect all words until next flag or end
+					locationParts := []string{}
+					j := i + 1
+					for ; j < len(words) && !strings.HasPrefix(words[j], "--"); j++ {
+						locationParts = append(locationParts, words[j])
+					}
+					location = strings.Join(locationParts, " ")
+					i = j - 1 // Skip processed words
+				}
+			case "--subscribe":
+				subscribe = true
+			case "--unsubscribe":
+				unsubscribe = true
+			case "--update-frequency":
+				if i+1 < len(words) {
+					var err error
+					updateFrequency, err = time.ParseDuration(words[i+1])
+					if err != nil {
+						log.Printf("Invalid update frequency: %s", words[i+1])
+						response := MattermostResponse{
+							Text:         fmt.Sprintf("Invalid update frequency: %s. Please use a valid duration like 30s, 5m, 1h", words[i+1]),
+							ResponseType: "ephemeral",
+							ChannelID:    channelID,
+						}
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					i++ // Skip the frequency value
+				}
+			case "--id":
+				if i+1 < len(words) {
+					subscriptionID = words[i+1]
+					i++ // Skip the ID value
+				}
 			}
 		}
 		
-		// Check if location is provided
-		if location == "" {
+		// If no flags were used, treat the entire text as location
+		if location == "" && !strings.Contains(text, "--") {
+			location = text
+		}
+		
+		// Handle unsubscribe request
+		if unsubscribe {
+			if subscriptionID == "" {
+				// List subscriptions for the user
+				subs := subscriptionManager.GetSubscriptionsForUser(userID)
+				if len(subs) == 0 {
+					response := MattermostResponse{
+						Text:         "You don't have any active weather subscriptions.",
+						ResponseType: "ephemeral",
+						ChannelID:    channelID,
+					}
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+				
+				// Build list of subscriptions
+				var subList strings.Builder
+				subList.WriteString("Your active weather subscriptions:\n\n")
+				for _, sub := range subs {
+					subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %s\n\n", 
+						sub.ID, sub.Location, sub.UpdateFrequency))
+				}
+				subList.WriteString("To unsubscribe, use: `/weather --unsubscribe --id SUBSCRIPTION_ID`")
+				
+				response := MattermostResponse{
+					Text:         subList.String(),
+					ResponseType: "ephemeral",
+					ChannelID:    channelID,
+				}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+			
+			// Remove the subscription
+			if subscriptionManager.RemoveSubscription(subscriptionID) {
+				response := MattermostResponse{
+					Text:         fmt.Sprintf("Successfully unsubscribed from weather updates for subscription ID: %s", subscriptionID),
+					ResponseType: "ephemeral",
+					ChannelID:    channelID,
+				}
+				json.NewEncoder(w).Encode(response)
+			} else {
+				response := MattermostResponse{
+					Text:         fmt.Sprintf("No subscription found with ID: %s", subscriptionID),
+					ResponseType: "ephemeral",
+					ChannelID:    channelID,
+				}
+				json.NewEncoder(w).Encode(response)
+			}
+			return
+		}
+		
+		// Check if location is provided for regular weather or subscription
+		if location == "" && (subscribe || !unsubscribe) {
 			log.Printf("No location provided, sending help message")
 			response := MattermostResponse{
-				Text:         "Please provide a location. Example: `/weather New York` or `/weather --location London, UK`",
-				ResponseType: "ephemeral", // Only visible to the user who triggered the command
+				Text:         "Please provide a location. Example: `/weather New York` or `/weather --location London, UK --subscribe --update-frequency 30m`",
+				ResponseType: "ephemeral",
 				ChannelID:    channelID,
 			}
 			json.NewEncoder(w).Encode(response)
 			return
 		}
 		
-		// Get weather data
+		// Handle subscription request
+		if subscribe {
+			// Set default update frequency if not provided
+			if updateFrequency == 0 {
+				updateFrequency = 1 * time.Hour // Default to hourly updates
+			}
+			
+			// Validate minimum update frequency
+			if updateFrequency < 30*time.Second {
+				response := MattermostResponse{
+					Text:         "Update frequency must be at least 30 seconds.",
+					ResponseType: "ephemeral",
+					ChannelID:    channelID,
+				}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+			
+			// Create a unique ID for the subscription
+			subID := fmt.Sprintf("sub_%d", time.Now().UnixNano())
+			
+			// Create the subscription
+			subscription := &Subscription{
+				ID:              subID,
+				Location:        location,
+				ChannelID:       channelID,
+				UserID:          userID,
+				UpdateFrequency: updateFrequency,
+				LastUpdated:     time.Now(),
+				StopChan:        make(chan struct{}),
+			}
+			
+			// Add the subscription
+			subscriptionManager.AddSubscription(subscription)
+			
+			// Start a goroutine to handle the subscription
+			go func(sub *Subscription) {
+				// Get initial weather data
+				weatherData, err := getWeatherData(sub.Location, apiKey)
+				if err != nil {
+					log.Printf("Error fetching initial weather data for subscription %s: %v", sub.ID, err)
+					return
+				}
+				
+				// Send initial weather update
+				weatherText := formatWeatherResponse(weatherData)
+				sendMattermostMessage(sub.ChannelID, weatherText)
+				
+				// Create a ticker for periodic updates
+				ticker := time.NewTicker(sub.UpdateFrequency)
+				defer ticker.Stop()
+				
+				for {
+					select {
+					case <-ticker.C:
+						// Get updated weather data
+						weatherData, err := getWeatherData(sub.Location, apiKey)
+						if err != nil {
+							log.Printf("Error fetching weather data for subscription %s: %v", sub.ID, err)
+							continue
+						}
+						
+						// Send weather update
+						weatherText := formatWeatherResponse(weatherData)
+						sendMattermostMessage(sub.ChannelID, weatherText)
+						
+						// Update last updated time
+						sub.LastUpdated = time.Now()
+					case <-sub.StopChan:
+						log.Printf("Stopping subscription %s", sub.ID)
+						return
+					}
+				}
+			}(subscription)
+			
+			// Send confirmation
+			response := MattermostResponse{
+				Text:         fmt.Sprintf("Successfully subscribed to weather updates for %s every %s. Subscription ID: `%s`", location, updateFrequency, subID),
+				ResponseType: "ephemeral",
+				ChannelID:    channelID,
+			}
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+		
+		// Handle regular weather request
 		weatherData, err := getWeatherData(location, apiKey)
 		if err != nil {
 			log.Printf("Error fetching weather data: %v", err)
 			response := MattermostResponse{
 				Text:         fmt.Sprintf("Error fetching weather data: %v", err),
-				ResponseType: "ephemeral", // Only visible to the user who triggered the command
-				ChannelID:    channelID,   // Specify the channel to post to
+				ResponseType: "ephemeral",
+				ChannelID:    channelID,
 			}
 			json.NewEncoder(w).Encode(response)
 			return
@@ -205,8 +473,8 @@ func main() {
 		weatherText := formatWeatherResponse(weatherData)
 		response := MattermostResponse{
 			Text:         weatherText,
-			ResponseType: "in_channel", // Make the response visible to everyone in the channel
-			ChannelID:    channelID,    // Specify the channel to post to
+			ResponseType: "in_channel",
+			ChannelID:    channelID,
 		}
 
 		// Return the response
@@ -311,6 +579,44 @@ func getWeatherData(location, apiKey string) (*WeatherResponse, error) {
 	}
 
 	return &weatherData, nil
+}
+
+// sendMattermostMessage sends a message to a Mattermost channel
+func sendMattermostMessage(channelID, text string) error {
+	// Create the message payload
+	response := MattermostResponse{
+		Text:         text,
+		ResponseType: "in_channel",
+		ChannelID:    channelID,
+	}
+	
+	// Convert to JSON
+	payload, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("error marshaling message: %v", err)
+	}
+	
+	// Get the Mattermost webhook URL from environment variable
+	webhookURL := os.Getenv("MATTERMOST_WEBHOOK_URL")
+	if webhookURL == "" {
+		return fmt.Errorf("MATTERMOST_WEBHOOK_URL environment variable not set")
+	}
+	
+	// Send the request
+	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("error sending message: %v", err)
+	}
+	defer resp.Body.Close()
+	
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("error from Mattermost: status %d, body: %s", resp.StatusCode, string(body))
+	}
+	
+	log.Printf("Successfully sent message to channel %s", channelID)
+	return nil
 }
 
 // formatWeatherResponse creates a human-readable weather report
