@@ -16,7 +16,16 @@ setup() {
     # docker exec -it mattermost mmctl config patch /mattermost/config/defaultConfig.json --local
     docker exec -it mattermost mmctl user create --password Testpassword123! --username sysadmin --email sysadmin@example.com --system-admin --local
     docker exec -it mattermost mmctl user create --password Testpassword123! --username user-1 --email user-1@example.com --local
-    docker exec -it mattermost mmctl team create --name test --display-name "Test Team" --local
+    
+    # Check if team exists before creating it
+    if ! docker exec -it mattermost mmctl team list --local | grep -q "test"; then
+        echo "Creating test team..."
+        docker exec -it mattermost mmctl team create --name test --display-name "Test Team" --local
+    else
+        echo "Team 'test' already exists"
+    fi
+    
+    # Add users to the team
     docker exec -it mattermost mmctl team users add test sysadmin user-1 --local
     exit 0
   fi
