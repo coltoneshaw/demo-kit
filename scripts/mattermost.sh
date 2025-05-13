@@ -210,10 +210,8 @@ setupWebhooks() {
       # Extract webhook ID from URL
       WEBHOOK_ID=$(echo "$WEATHER_WEBHOOK_URL" | sed 's|.*/||')
       
-      # Check if webhook exists by ID - use the correct command
-      WEBHOOK_LIST_OUTPUT=$(docker exec -it mattermost mmctl webhook list --local)
-      
-      if docker exec -it mattermost mmctl webhook list --local | grep -q "$WEBHOOK_ID"; then
+      # Check if webhook exists by display name
+      if docker exec -it mattermost mmctl webhook list --local | grep -q "Display Name: weather"; then
         echo "Found existing weather webhook in Mattermost with ID: $WEBHOOK_ID"
       else
         echo "Weather webhook no longer exists in Mattermost, recreating..."
