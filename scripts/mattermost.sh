@@ -41,6 +41,41 @@ setup() {
     
     # Add users to the team
     docker exec -it mattermost mmctl team users add test sysadmin user-1 --local
+    
+    # Get the channel ID for off-topic in the test team
+    echo "Getting channel ID for off-topic in test team..."
+    CHANNEL_ID=$(docker exec -it mattermost mmctl channel list test --local | grep -w "off-topic" | awk '{print $2}')
+    
+    if [ -n "$CHANNEL_ID" ]; then
+        echo "Found off-topic channel ID: $CHANNEL_ID"
+        
+        # Check if webhook already exists
+        WEBHOOK_EXISTS=$(docker exec -it mattermost mmctl webhook list-incoming --local | grep -w "weather")
+        
+        if [ -z "$WEBHOOK_EXISTS" ]; then
+            echo "Creating incoming webhook for weather app..."
+            WEBHOOK_ID=$(docker exec -it mattermost mmctl webhook create-incoming --channel "$CHANNEL_ID" --user sysadmin --display-name weather --description "Weather responses" --icon http://weather-app:8085/bot.png --local | grep -oP 'Id: \K[a-z0-9]+')
+            
+            if [ -n "$WEBHOOK_ID" ]; then
+                echo "Created webhook with ID: $WEBHOOK_ID"
+                
+                # Update env_vars.env file with the webhook URL
+                WEBHOOK_URL="http://mattermost:8065/hooks/$WEBHOOK_ID"
+                echo "Setting webhook URL: $WEBHOOK_URL"
+                
+                # Update the env_vars.env file
+                sed -i "s|MATTERMOST_WEBHOOK_URL=.*|MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" ./files/env_vars.env
+                echo "Updated env_vars.env with webhook URL"
+            else
+                echo "Failed to create webhook"
+            fi
+        else
+            echo "Webhook 'weather' already exists"
+        fi
+    else
+        echo "Could not find off-topic channel in test team"
+    fi
+    
     exit 0
   fi
 
