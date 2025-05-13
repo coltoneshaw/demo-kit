@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -56,26 +58,96 @@ type MattermostResponse struct {
 
 // Subscription represents a weather subscription for a channel
 type Subscription struct {
-	ID               string        // Unique identifier for the subscription
-	Location         string        // Location to get weather for
-	ChannelID        string        // Channel to post updates to
-	UserID           string        // User who created the subscription
-	UpdateFrequency  time.Duration // How often to update
-	LastUpdated      time.Time     // When the subscription was last updated
-	StopChan         chan struct{} // Channel to signal stopping the subscription
+	ID               string        `json:"id"`               // Unique identifier for the subscription
+	Location         string        `json:"location"`         // Location to get weather for
+	ChannelID        string        `json:"channel_id"`       // Channel to post updates to
+	UserID           string        `json:"user_id"`          // User who created the subscription
+	UpdateFrequency  time.Duration `json:"update_frequency"` // How often to update
+	LastUpdated      time.Time     `json:"last_updated"`     // When the subscription was last updated
+	StopChan         chan struct{} `json:"-"`                // Channel to signal stopping the subscription (not serialized)
 }
 
 // SubscriptionManager manages all active subscriptions
 type SubscriptionManager struct {
-	Subscriptions map[string]*Subscription // Map of subscription ID to subscription
-	Mutex         sync.RWMutex             // Mutex to protect the map
+	Subscriptions map[string]*Subscription `json:"subscriptions"` // Map of subscription ID to subscription
+	Mutex         sync.RWMutex             `json:"-"`             // Mutex to protect the map (not serialized)
+	FilePath      string                   `json:"-"`             // Path to the subscription file (not serialized)
 }
 
 // NewSubscriptionManager creates a new subscription manager
-func NewSubscriptionManager() *SubscriptionManager {
-	return &SubscriptionManager{
+func NewSubscriptionManager(filePath string) *SubscriptionManager {
+	sm := &SubscriptionManager{
 		Subscriptions: make(map[string]*Subscription),
+		FilePath:      filePath,
 	}
+	
+	// Load existing subscriptions from file
+	if err := sm.LoadFromFile(); err != nil {
+		log.Printf("Failed to load subscriptions from file: %v", err)
+	}
+	
+	return sm
+}
+
+// SaveToFile saves all subscriptions to a JSON file
+func (sm *SubscriptionManager) SaveToFile() error {
+	sm.Mutex.RLock()
+	defer sm.Mutex.RUnlock()
+	
+	// Create directory if it doesn't exist
+	dir := filepath.Dir(sm.FilePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %v", err)
+	}
+	
+	// Marshal to JSON
+	data, err := json.MarshalIndent(sm, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal subscriptions: %v", err)
+	}
+	
+	// Write to file
+	if err := os.WriteFile(sm.FilePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write subscriptions file: %v", err)
+	}
+	
+	log.Printf("Saved %d subscriptions to %s", len(sm.Subscriptions), sm.FilePath)
+	return nil
+}
+
+// LoadFromFile loads subscriptions from a JSON file
+func (sm *SubscriptionManager) LoadFromFile() error {
+	sm.Mutex.Lock()
+	defer sm.Mutex.Unlock()
+	
+	// Check if file exists
+	if _, err := os.Stat(sm.FilePath); os.IsNotExist(err) {
+		log.Printf("Subscriptions file does not exist at %s", sm.FilePath)
+		return nil // Not an error, just no file yet
+	}
+	
+	// Read file
+	data, err := os.ReadFile(sm.FilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read subscriptions file: %v", err)
+	}
+	
+	// Unmarshal JSON
+	var loadedManager SubscriptionManager
+	if err := json.Unmarshal(data, &loadedManager); err != nil {
+		return fmt.Errorf("failed to unmarshal subscriptions: %v", err)
+	}
+	
+	// Copy subscriptions to current manager
+	sm.Subscriptions = loadedManager.Subscriptions
+	
+	// Initialize StopChan for each subscription
+	for _, sub := range sm.Subscriptions {
+		sub.StopChan = make(chan struct{})
+	}
+	
+	log.Printf("Loaded %d subscriptions from %s", len(sm.Subscriptions), sm.FilePath)
+	return nil
 }
 
 // AddSubscription adds a new subscription
@@ -83,6 +155,9 @@ func (sm *SubscriptionManager) AddSubscription(sub *Subscription) {
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
 	sm.Subscriptions[sub.ID] = sub
+	
+	// Save to file after adding
+	go sm.SaveToFile()
 }
 
 // RemoveSubscription removes a subscription
@@ -96,6 +171,8 @@ func (sm *SubscriptionManager) RemoveSubscription(id string) bool {
 		close(sub.StopChan)
 		// Remove from map
 		delete(sm.Subscriptions, id)
+		// Save to file after removing
+		go sm.SaveToFile()
 		return true
 	}
 	return false
@@ -173,8 +250,10 @@ func main() {
 	}
 	log.Printf("Using API key: %s", apiKey)
 	
-	// Create subscription manager
-	subscriptionManager := NewSubscriptionManager()
+	// Create subscription manager with file path
+	subscriptionsFile := "./weather_app/subscriptions.json"
+	subscriptionManager := NewSubscriptionManager(subscriptionsFile)
+	log.Printf("Using subscriptions file: %s", subscriptionsFile)
 
 	// Set up HTTP server
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -405,6 +484,7 @@ func main() {
 			
 			// Add the subscription
 			subscriptionManager.AddSubscription(subscription)
+			log.Printf("Added new subscription with ID: %s", subID)
 			
 			// Start a goroutine to handle the subscription
 			go func(sub *Subscription) {
@@ -439,6 +519,9 @@ func main() {
 						
 						// Update last updated time
 						sub.LastUpdated = time.Now()
+						
+						// Save updated time to file
+						subscriptionManager.SaveToFile()
 					case <-sub.StopChan:
 						log.Printf("Stopping subscription %s", sub.ID)
 						return
@@ -516,6 +599,61 @@ func main() {
 		// Serve the file
 		http.ServeFile(w, r, botImagePath)
 	})
+	
+	// Start active subscriptions
+	log.Printf("Starting %d saved subscriptions...", len(subscriptionManager.Subscriptions))
+	for _, sub := range subscriptionManager.Subscriptions {
+		// Initialize the stop channel
+		sub.StopChan = make(chan struct{})
+		
+		// Start the subscription in a goroutine
+		go func(sub *Subscription) {
+			log.Printf("Starting saved subscription %s for location %s", sub.ID, sub.Location)
+			
+			// Get initial weather data
+			weatherData, err := getWeatherData(sub.Location, apiKey)
+			if err != nil {
+				log.Printf("Error fetching initial weather data for subscription %s: %v", sub.ID, err)
+				return
+			}
+			
+			// Send initial weather update
+			weatherText := formatWeatherResponse(weatherData)
+			sendMattermostMessage(sub.ChannelID, weatherText)
+			
+			// Create a ticker for periodic updates
+			ticker := time.NewTicker(sub.UpdateFrequency)
+			defer ticker.Stop()
+			
+			for {
+				select {
+				case <-ticker.C:
+					// Get updated weather data
+					weatherData, err := getWeatherData(sub.Location, apiKey)
+					if err != nil {
+						log.Printf("Error fetching weather data for subscription %s: %v", sub.ID, err)
+						continue
+					}
+					
+					// Send weather update
+					weatherText := formatWeatherResponse(weatherData)
+					sendMattermostMessage(sub.ChannelID, weatherText)
+					
+					// Update last updated time
+					sub.LastUpdated = time.Now()
+					
+					// Save updated time to file
+					subscriptionManager.SaveToFile()
+				case <-sub.StopChan:
+					log.Printf("Stopping subscription %s", sub.ID)
+					return
+				}
+			}
+		}(sub)
+	}
+	
+	// Set up graceful shutdown to save subscriptions
+	setupGracefulShutdown(subscriptionManager)
 	
 	// Start the server
 	port := "8085"
@@ -617,6 +755,23 @@ func sendMattermostMessage(channelID, text string) error {
 	
 	log.Printf("Successfully sent message to channel %s", channelID)
 	return nil
+}
+
+// setupGracefulShutdown sets up signal handling for graceful shutdown
+func setupGracefulShutdown(sm *SubscriptionManager) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	
+	go func() {
+		<-c
+		log.Println("Received shutdown signal, saving subscriptions...")
+		if err := sm.SaveToFile(); err != nil {
+			log.Printf("Error saving subscriptions: %v", err)
+		} else {
+			log.Println("Subscriptions saved successfully")
+		}
+		os.Exit(0)
+	}()
 }
 
 // formatWeatherResponse creates a human-readable weather report
