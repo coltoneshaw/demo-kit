@@ -81,7 +81,15 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 		
 		// Add destination if available
 		if flight.Destination != "" {
-			sb.WriteString(fmt.Sprintf(" to %s", flight.Destination))
+			destinationCode := flight.Destination
+			// Try to convert ICAO code to more recognizable 3-letter code if possible
+			for code, icao := range AirportCodeMap {
+				if icao == flight.Destination {
+					destinationCode = code
+					break
+				}
+			}
+			sb.WriteString(fmt.Sprintf(" to %s", destinationCode))
 		}
 		
 		if flight.Velocity > 0 {
