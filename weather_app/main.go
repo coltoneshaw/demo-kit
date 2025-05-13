@@ -59,10 +59,9 @@ func main() {
 	// Get API key from environment variable
 	apiKey := os.Getenv("WEATHER_API_KEY")
 	if apiKey == "" {
-		log.Println("Warning: WEATHER_API_KEY environment variable not set, using default")
-		apiKey = "c5AeEo7A30nZmTHZkCs0fQXT8JcUFWJC" // Fallback to default if not set
+		log.Fatal("Error: WEATHER_API_KEY environment variable not set. Please set this environment variable before starting the application.")
 	}
-	log.Printf("Using API key: %s", apiKey)
+	log.Println("Weather API key loaded successfully")
 
 	// Create subscription manager with file path
 	subscriptionsFile := "./subscriptions.json"
