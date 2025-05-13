@@ -106,13 +106,16 @@ createWeatherWebhook() {
   
   if [ -z "$WEBHOOK_EXISTS" ]; then
     echo "Creating incoming webhook for weather app..."
-    WEBHOOK_ID=$(docker exec -it mattermost mmctl webhook create-incoming \
+    WEBHOOK_RESPONSE=$(docker exec -it mattermost mmctl webhook create-incoming \
       --channel "$CHANNEL_ID" \
       --user professor \
       --display-name weather \
       --description "Weather responses" \
       --icon http://weather-app:8085/bot.png \
-      --local | grep -oP 'Id: \K[a-z0-9]+')
+      --local)
+    
+    # Extract webhook ID using basic grep and sed instead of grep -P
+    WEBHOOK_ID=$(echo "$WEBHOOK_RESPONSE" | grep "Id:" | sed 's/^Id: //')
     
     if [ -n "$WEBHOOK_ID" ]; then
       updateWebhookConfig "$WEBHOOK_ID"
