@@ -1,13 +1,10 @@
-package main
+package cmd
 
 import (
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
-	"scripts/general"
-	"scripts/keycloak"
-	"scripts/mattermost"
 )
 
 func main() {

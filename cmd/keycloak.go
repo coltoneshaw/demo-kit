@@ -1,4 +1,4 @@
-package keycloak
+package cmd
 
 import (
 	"fmt"
