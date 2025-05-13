@@ -420,50 +420,6 @@ func handleSubscribe(w http.ResponseWriter, channelID string, userID string, loc
 	json.NewEncoder(w).Encode(response)
 }
 
-// startSubscription starts a subscription in a goroutine
-func startSubscription(sub *Subscription, apiKey string, subscriptionManager *SubscriptionManager) {
-	// Get initial weather data
-	weatherData, err := getWeatherData(sub.Location, apiKey)
-	if err != nil {
-		log.Printf("Error fetching initial weather data for subscription %s: %v", sub.ID, err)
-		return
-	}
-
-	// Send initial weather update
-	weatherText := formatWeatherResponse(weatherData)
-	sendMattermostMessage(sub.ChannelID, weatherText)
-
-	// Create a ticker for periodic updates (convert milliseconds to duration)
-	ticker := time.NewTicker(time.Duration(sub.UpdateFrequency) * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			// Get updated weather data
-			weatherData, err := getWeatherData(sub.Location, apiKey)
-			if err != nil {
-				log.Printf("Error fetching weather data for subscription %s: %v", sub.ID, err)
-				continue
-			}
-
-			// Send weather update
-			weatherText := formatWeatherResponse(weatherData)
-			sendMattermostMessage(sub.ChannelID, weatherText)
-
-			// Update last updated time
-			sub.LastUpdated = time.Now()
-
-			// Only save to file occasionally (every 6 hours) to reduce disk I/O
-			if time.Since(sub.LastUpdated).Hours() >= 6 {
-				subscriptionManager.SaveToFile()
-			}
-		case <-sub.StopChan:
-			log.Printf("Stopping subscription %s", sub.ID)
-			return
-		}
-	}
-}
 
 // handleRegularWeatherRequest handles a regular weather request
 func handleRegularWeatherRequest(w http.ResponseWriter, channelID string, location string, apiKey string) {
