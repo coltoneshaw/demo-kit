@@ -75,75 +75,111 @@ createTeam() {
   
   # Add users to the team
   docker exec -it mattermost mmctl team users add test sysadmin user-1 --local
+  
+  # Create slash commands
+  createSlashCommands
+}
+
+# Create slash commands
+createSlashCommands() {
+  # Check if /flights command exists
+  if ! docker exec -it mattermost mmctl command list --local | grep -q "/flights"; then
+    echo "Creating /flights slash command..."
+    docker exec -it mattermost mmctl command create --team test --trigger "flights" --url "http://flightaware-app:8086/webhook" --description "Get flight departures" --local
+    echo "/flights command created"
+  else
+    echo "/flights command already exists"
+  fi
+  
+  # Check if /weather command exists
+  if ! docker exec -it mattermost mmctl command list --local | grep -q "/weather"; then
+    echo "Creating /weather slash command..."
+    docker exec -it mattermost mmctl command create --team test --trigger "weather" --url "http://weather-app:8085/webhook" --description "Get weather information" --local
+    echo "/weather command created"
+  else
+    echo "/weather command already exists"
+  fi
 }
 
 # Update webhook configuration
 updateWebhookConfig() {
   local WEBHOOK_ID="$1"
+  local APP_NAME="$2"
+  local ENV_VAR_NAME="$3"
+  local CONTAINER_NAME="$4"
   
-  echo "Created webhook with ID: $WEBHOOK_ID"
+  echo "Created webhook with ID: $WEBHOOK_ID for $APP_NAME"
   
   # Update env_vars.env file with the webhook URL
   WEBHOOK_URL="http://mattermost:8065/hooks/$WEBHOOK_ID"
-  echo "Setting webhook URL: $WEBHOOK_URL"
+  echo "Setting webhook URL: $WEBHOOK_URL for $ENV_VAR_NAME"
   
   # Update the env_vars.env file - use different sed syntax for macOS compatibility
   if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS version of sed requires an empty string after -i
-    sed -i '' "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+    sed -i '' "s|$ENV_VAR_NAME=.*|$ENV_VAR_NAME=$WEBHOOK_URL|" "$ENV_FILE"
   else
     # Linux version
-    sed -i "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+    sed -i "s|$ENV_VAR_NAME=.*|$ENV_VAR_NAME=$WEBHOOK_URL|" "$ENV_FILE"
   fi
-  echo "Updated env_vars.env with webhook URL"
+  echo "Updated env_vars.env with webhook URL for $APP_NAME"
   
-  # Restart the weather-app container to pick up the new webhook URL
-  echo "Restarting weather-app container..."
-  docker restart weather-app
-  echo "Weather app restarted successfully"
+  # Restart the app container to pick up the new webhook URL
+  echo "Restarting $CONTAINER_NAME container..."
+  docker restart "$CONTAINER_NAME"
+  echo "$APP_NAME restarted successfully"
 }
 
-# Create weather webhook
-createWeatherWebhook() {
+# Create app webhook
+createAppWebhook() {
   local CHANNEL_ID="$1"
+  local APP_NAME="$2"
+  local DISPLAY_NAME="$3"
+  local DESCRIPTION="$4"
+  local ICON_URL="$5"
+  local ENV_VAR_NAME="$6"
+  local CONTAINER_NAME="$7"
   
   # Check if webhook already exists
-  WEBHOOK_EXISTS=$(docker exec -it mattermost mmctl webhook list-incoming --local | grep -w "weather")
+  WEBHOOK_EXISTS=$(docker exec -it mattermost mmctl webhook list-incoming --local | grep -w "$DISPLAY_NAME")
   
   if [ -z "$WEBHOOK_EXISTS" ]; then
-    echo "Creating incoming webhook for weather app..."
+    echo "Creating incoming webhook for $APP_NAME..."
     WEBHOOK_RESPONSE=$(docker exec -it mattermost mmctl webhook create-incoming \
       --channel "$CHANNEL_ID" \
       --user professor \
-      --display-name weather \
-      --description "Weather responses" \
-      --icon http://weather-app:8085/bot.png \
+      --display-name "$DISPLAY_NAME" \
+      --description "$DESCRIPTION" \
+      --icon "$ICON_URL" \
       --local)
     
     # Extract webhook ID using basic grep and sed instead of grep -P
     WEBHOOK_ID=$(echo "$WEBHOOK_RESPONSE" | grep "Id:" | sed 's/^Id: //')
     
     if [ -n "$WEBHOOK_ID" ]; then
-      updateWebhookConfig "$WEBHOOK_ID"
+      updateWebhookConfig "$WEBHOOK_ID" "$APP_NAME" "$ENV_VAR_NAME" "$CONTAINER_NAME"
     else
-      echo "Failed to create webhook"
+      echo "Failed to create webhook for $APP_NAME"
     fi
   else
-    echo "Webhook 'weather' already exists"
+    echo "Webhook '$DISPLAY_NAME' already exists"
   fi
 }
 
-# Set up webhook for weather app
-setupWebhook() {
-  # Check if webhook URL is already set in env_vars.env
-  WEBHOOK_URL=$(grep "WEATHER_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
-  
-  if [ -n "$WEBHOOK_URL" ] && [ "$WEBHOOK_URL" != "" ]; then
-    echo "Webhook URL already exists in env_vars.env: $WEBHOOK_URL"
-    echo "Skipping webhook creation"
-    return
-  fi
-  
+# Create weather webhook
+createWeatherWebhook() {
+  local CHANNEL_ID="$1"
+  createAppWebhook "$CHANNEL_ID" "Weather app" "weather" "Weather responses" "http://weather-app:8085/bot.png" "WEATHER_MATTERMOST_WEBHOOK_URL" "weather-app"
+}
+
+# Create flight webhook
+createFlightWebhook() {
+  local CHANNEL_ID="$1"
+  createAppWebhook "$CHANNEL_ID" "Flight app" "flight-app" "Flight departures" "http://flightaware-app:8086/bot.png" "FLIGHTS_MATTERMOST_WEBHOOK_URL" "flightaware-app"
+}
+
+# Set up webhooks for apps
+setupWebhooks() {
   # Get the channel ID for off-topic in the test team using channel search
   echo "Getting channel ID for off-topic in test team..."
   CHANNEL_SEARCH=$(docker exec -it mattermost mmctl channel search off-topic --team test --local)
@@ -151,7 +187,22 @@ setupWebhook() {
   
   if [ -n "$CHANNEL_ID" ]; then
     echo "Found off-topic channel ID: $CHANNEL_ID"
-    createWeatherWebhook "$CHANNEL_ID"
+    
+    # Setup Weather webhook
+    WEATHER_WEBHOOK_URL=$(grep "WEATHER_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
+    if [ -n "$WEATHER_WEBHOOK_URL" ] && [ "$WEATHER_WEBHOOK_URL" != "" ]; then
+      echo "Weather webhook URL already exists in env_vars.env: $WEATHER_WEBHOOK_URL"
+    else
+      createWeatherWebhook "$CHANNEL_ID"
+    fi
+    
+    # Setup Flight webhook
+    FLIGHT_WEBHOOK_URL=$(grep "FLIGHTS_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
+    if [ -n "$FLIGHT_WEBHOOK_URL" ] && [ "$FLIGHT_WEBHOOK_URL" != "" ]; then
+      echo "Flight webhook URL already exists in env_vars.env: $FLIGHT_WEBHOOK_URL"
+    else
+      createFlightWebhook "$CHANNEL_ID"
+    fi
   else
     echo "Could not find off-topic channel in test team"
   fi
@@ -163,7 +214,7 @@ setupTestData() {
   
   createUsers
   createTeam
-  setupWebhook
+  setupWebhooks
 }
 
 # Main setup function
