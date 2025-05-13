@@ -152,7 +152,7 @@ createAppWebhook() {
   local CONTAINER_NAME="$7"
   
   # Check if webhook already exists by display name
-  WEBHOOK_EXISTS=$(docker exec -it mattermost mmctl webhook list-incoming --local | grep -w "$DISPLAY_NAME")
+  WEBHOOK_EXISTS=$(docker exec -it mattermost mmctl webhook list --local | grep -w "$DISPLAY_NAME")
   
   if [ -z "$WEBHOOK_EXISTS" ]; then
     echo "Creating incoming webhook for $APP_NAME..."
@@ -200,7 +200,7 @@ setupWebhooks() {
     echo "Found off-topic channel ID: $CHANNEL_ID"
     
     # Get list of existing webhooks with proper formatting
-    WEBHOOKS_LIST=$(docker exec -it mattermost mmctl webhook list-incoming --local)
+    WEBHOOKS_LIST=$(docker exec -it mattermost mmctl webhook list --local)
     
     # Setup Weather webhook
     WEATHER_WEBHOOK_URL=$(grep "WEATHER_MATTERMOST_WEBHOOK_URL=" "$ENV_FILE" | cut -d'=' -f2)
@@ -211,9 +211,9 @@ setupWebhooks() {
       WEBHOOK_ID=$(echo "$WEATHER_WEBHOOK_URL" | sed 's|.*/||')
       
       # Check if webhook exists by ID - use the correct command
-      WEBHOOK_LIST_OUTPUT=$(docker exec -it mattermost mmctl webhook list-incoming --local)
+      WEBHOOK_LIST_OUTPUT=$(docker exec -it mattermost mmctl webhook list --local)
       
-      if docker exec -it mattermost mmctl webhook list-incoming --local | grep -q "$WEBHOOK_ID"; then
+      if docker exec -it mattermost mmctl webhook list --local | grep -q "$WEBHOOK_ID"; then
         echo "Found existing weather webhook in Mattermost with ID: $WEBHOOK_ID"
       else
         echo "Weather webhook no longer exists in Mattermost, recreating..."
@@ -221,9 +221,9 @@ setupWebhooks() {
       fi
     else
       # No webhook URL in env file, check if webhook exists in Mattermost
-      if echo "$WEBHOOKS_LIST" | grep -q "weather"; then
+      if echo "$WEBHOOKS_LIST" | grep -q "Display Name: weather"; then
         echo "Weather webhook exists in Mattermost but not in env file"
-        WEATHER_WEBHOOK_ID=$(echo "$WEBHOOKS_LIST" | grep -A 1 "weather" | grep "ID:" | awk '{print $2}')
+        WEATHER_WEBHOOK_ID=$(echo "$WEBHOOKS_LIST" | grep -A 5 "Display Name: weather" | grep "ID:" | awk '{print $2}')
         if [ -n "$WEATHER_WEBHOOK_ID" ]; then
           WEATHER_WEBHOOK_URL="http://mattermost:8065/hooks/$WEATHER_WEBHOOK_ID"
           echo "Updating weather webhook URL in env_vars.env"
@@ -250,7 +250,7 @@ setupWebhooks() {
       WEBHOOK_ID=$(echo "$FLIGHT_WEBHOOK_URL" | sed 's|.*/||')
       
       # Check if webhook exists by ID - use the correct command
-      if docker exec -it mattermost mmctl webhook list-incoming --local | grep -q "$WEBHOOK_ID"; then
+      if docker exec -it mattermost mmctl webhook list --local | grep -q "$WEBHOOK_ID"; then
         echo "Found existing flight webhook in Mattermost with ID: $WEBHOOK_ID"
       else
         echo "Flight webhook no longer exists in Mattermost, recreating..."
@@ -258,9 +258,9 @@ setupWebhooks() {
       fi
     else
       # No webhook URL in env file, check if webhook exists in Mattermost
-      if echo "$WEBHOOKS_LIST" | grep -q "flight-app"; then
+      if echo "$WEBHOOKS_LIST" | grep -q "Display Name: flight-app"; then
         echo "Flight webhook exists in Mattermost but not in env file"
-        FLIGHT_WEBHOOK_ID=$(echo "$WEBHOOKS_LIST" | grep -A 1 "flight-app" | grep "ID:" | awk '{print $2}')
+        FLIGHT_WEBHOOK_ID=$(echo "$WEBHOOKS_LIST" | grep -A 5 "Display Name: flight-app" | grep "ID:" | awk '{print $2}')
         if [ -n "$FLIGHT_WEBHOOK_ID" ]; then
           FLIGHT_WEBHOOK_URL="http://mattermost:8065/hooks/$FLIGHT_WEBHOOK_ID"
           echo "Updating flight webhook URL in env_vars.env"
