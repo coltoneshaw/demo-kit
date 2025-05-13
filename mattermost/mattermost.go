@@ -100,6 +100,7 @@ func (c *Client) CreateUsers() error {
 			Username: "sysadmin",
 			Email:    "sysadmin@example.com",
 			Password: "Testpassword123!",
+			Roles:    "system_admin system_user",
 		}
 
 		createdUser, resp, err := c.API.CreateUser(context.Background(), sysadmin)
@@ -107,18 +108,6 @@ func (c *Client) CreateUsers() error {
 			return fmt.Errorf("failed to create sysadmin: %v, response status code: %v", err, resp.StatusCode)
 		}
 
-		// Make user a system admin
-		roles := "system_admin system_user"
-		patch := &model.UserPatch{
-			RoleId: &roles,
-		}
-		_, resp, err = c.API.PatchUser(context.Background(), createdUser.Id, patch)
-		if err != nil {
-			if resp != nil {
-				return fmt.Errorf("failed to make user system admin: %v, response status code: %v", err, resp.StatusCode)
-			}
-			return fmt.Errorf("failed to make user system admin: %v", err)
-		}
 	} else {
 		fmt.Println("User 'sysadmin' already exists")
 	}
@@ -271,7 +260,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Method:       "P",
 			URL:          c.WeatherAppURL,
 			CreatorId:    "", // Will be set to current user
-			Title:        "Weather Information",
+			DisplayName:  "Weather Information",
 			Description:  "Get weather information",
 			AutoComplete: true,
 			Username:     "weather-bot",
