@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -45,19 +47,19 @@ func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 // handleAPIUsage handles the /api-usage endpoint
 func handleAPIUsage(w http.ResponseWriter, r *http.Request, subscriptionManager *SubscriptionManager) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	hourlyUsage, dailyUsage := subscriptionManager.CalculateAPIUsage()
-	
+
 	usage := map[string]interface{}{
-		"hourly_usage": hourlyUsage,
-		"daily_usage": dailyUsage,
-		"hourly_limit": subscriptionManager.HourlyLimit,
-		"daily_limit": subscriptionManager.DailyLimit,
-		"hourly_remaining": subscriptionManager.HourlyLimit - hourlyUsage,
-		"daily_remaining": subscriptionManager.DailyLimit - dailyUsage,
+		"hourly_usage":       hourlyUsage,
+		"daily_usage":        dailyUsage,
+		"hourly_limit":       subscriptionManager.HourlyLimit,
+		"daily_limit":        subscriptionManager.DailyLimit,
+		"hourly_remaining":   subscriptionManager.HourlyLimit - hourlyUsage,
+		"daily_remaining":    subscriptionManager.DailyLimit - dailyUsage,
 		"subscription_count": len(subscriptionManager.Subscriptions),
 	}
-	
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(usage)
 }
@@ -140,7 +142,7 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request, apiKey string
 		sendListResponse(w, channelID, userID, subscriptionManager)
 		return
 	}
-	
+
 	// Parse command flags
 	var location string
 	var subscribe bool
@@ -213,7 +215,7 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request, apiKey string
 		sendLimitsResponse(w, channelID, subscriptionManager)
 		return
 	}
-	
+
 	// Handle unsubscribe request
 	if unsubscribe {
 		handleUnsubscribe(w, channelID, subscriptionID, subscriptionManager)
@@ -250,22 +252,22 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 		"- `/weather --help` - Show this help message\n" +
 		"- `/weather limits` - Show API usage limits and current usage\n" +
 		"- `/weather list` - List your active subscriptions\n\n" +
-		
+
 		"**Subscription Commands:**\n" +
 		"- `/weather --subscribe --location <location> --update-frequency <ms>` - Subscribe to weather updates\n" +
 		"- `/weather --unsubscribe --id <subscription_id>` - Unsubscribe from specific weather updates\n\n" +
-		
+
 		"**Parameters:**\n" +
 		"- `location` - City name, zip code, or coordinates (e.g., 'New York', '10001', '40.7128,-74.0060')\n" +
 		"- `update-frequency` - How often to send updates in milliseconds (e.g., 3600000 for hourly) or duration (e.g., 1h, 30m)\n" +
 		"- `subscription_id` - ID of an active subscription\n\n" +
-		
+
 		"**Examples:**\n" +
 		"- `/weather London` - Get current weather for London\n" +
 		"- `/weather list` - Show your active subscriptions\n" +
 		"- `/weather --subscribe --location Tokyo --update-frequency 3600000` - Get hourly weather updates for Tokyo\n" +
 		"- `/weather --subscribe --location \"San Francisco\" --update-frequency 1h` - Get hourly weather updates for San Francisco"
-	
+
 	response := MattermostResponse{
 		Text:         helpText,
 		ResponseType: "ephemeral",
@@ -277,7 +279,7 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 // sendLimitsResponse sends the API usage limits as an ephemeral message
 func sendLimitsResponse(w http.ResponseWriter, channelID string, subscriptionManager *SubscriptionManager) {
 	hourlyUsage, dailyUsage := subscriptionManager.CalculateAPIUsage()
-	
+
 	limitsText := fmt.Sprintf("**Weather API Usage Limits**\n\n"+
 		"**Current Usage:**\n"+
 		"- Hourly: %d/%d requests (%d%% used)\n"+
@@ -287,7 +289,7 @@ func sendLimitsResponse(w http.ResponseWriter, channelID string, subscriptionMan
 		hourlyUsage, subscriptionManager.HourlyLimit, (hourlyUsage*100)/subscriptionManager.HourlyLimit,
 		dailyUsage, subscriptionManager.DailyLimit, (dailyUsage*100)/subscriptionManager.DailyLimit,
 		len(subscriptionManager.Subscriptions))
-	
+
 	response := MattermostResponse{
 		Text:         limitsText,
 		ResponseType: "ephemeral",
@@ -375,7 +377,7 @@ func handleSubscribe(w http.ResponseWriter, channelID string, userID string, loc
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	
+
 	// Check if adding this subscription would exceed API limits
 	withinLimits, limitMessage := subscriptionManager.CheckSubscriptionLimits(updateFrequency)
 	if !withinLimits {
@@ -451,7 +453,7 @@ func startSubscription(sub *Subscription, apiKey string, subscriptionManager *Su
 
 			// Update last updated time
 			sub.LastUpdated = time.Now()
-			
+
 			// Only save to file occasionally (every 6 hours) to reduce disk I/O
 			if time.Since(sub.LastUpdated).Hours() >= 6 {
 				subscriptionManager.SaveToFile()

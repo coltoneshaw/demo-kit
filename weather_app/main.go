@@ -6,9 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
-	"time"
 )
 
 func main() {
@@ -27,7 +25,7 @@ func main() {
 
 	// Set up HTTP server
 	http.HandleFunc("/health", handleHealthCheck)
-	
+
 	http.HandleFunc("/api-usage", func(w http.ResponseWriter, r *http.Request) {
 		handleAPIUsage(w, r, subscriptionManager)
 	})
