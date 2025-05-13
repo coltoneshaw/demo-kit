@@ -110,8 +110,11 @@ func (sm *SubscriptionManager) SaveToFile() error {
 	if err := os.WriteFile(sm.FilePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write subscriptions file: %v", err)
 	}
-
-	log.Printf("Saved %d subscriptions to %s", len(sm.Subscriptions), sm.FilePath)
+	
+	// Only log during initial load or when explicitly requested
+	if len(sm.Subscriptions) > 0 && os.Getenv("DEBUG") == "true" {
+		log.Printf("Saved %d subscriptions to %s", len(sm.Subscriptions), sm.FilePath)
+	}
 	return nil
 }
 
@@ -519,9 +522,11 @@ func main() {
 
 						// Update last updated time
 						sub.LastUpdated = time.Now()
-
-						// Save updated time to file
-						subscriptionManager.SaveToFile()
+						
+						// Only save to file occasionally (every 6 hours) to reduce disk I/O
+						if time.Since(sub.LastUpdated).Hours() >= 6 {
+							subscriptionManager.SaveToFile()
+						}
 					case <-sub.StopChan:
 						log.Printf("Stopping subscription %s", sub.ID)
 						return
@@ -641,9 +646,11 @@ func main() {
 
 					// Update last updated time
 					sub.LastUpdated = time.Now()
-
-					// Save updated time to file
-					subscriptionManager.SaveToFile()
+					
+					// Only save to file occasionally (every 6 hours) to reduce disk I/O
+					if time.Since(sub.LastUpdated).Hours() >= 6 {
+						subscriptionManager.SaveToFile()
+					}
 				case <-sub.StopChan:
 					log.Printf("Stopping subscription %s", sub.ID)
 					return
