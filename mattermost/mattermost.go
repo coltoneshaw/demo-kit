@@ -106,7 +106,7 @@ func (c *Client) CreateUsers() error {
 
 		// Make user a system admin
 		patch := &model.UserPatch{
-			Roles: model.NewString("system_admin system_user"),
+			Roles: &model.StringPointer("system_admin system_user"),
 		}
 		_, resp, err = c.API.PatchUser(context.Background(), createdUser.Id, patch)
 		if err != nil {
