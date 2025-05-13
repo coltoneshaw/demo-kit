@@ -14,6 +14,8 @@ func getDepartureFlights(airport string, start, end int64) (*DepartureFlights, e
 	// Construct the API URL
 	apiURL := fmt.Sprintf("https://opensky-network.org/api/flights/departure?airport=%s&begin=%d&end=%d", 
 		strings.ToUpper(airport), start, end)
+	
+	log.Printf("Requesting flights from: %s", apiURL)
 
 	// Create HTTP client with timeout
 	client := &http.Client{
@@ -73,18 +75,29 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 	
 	for i := 0; i < maxFlights; i++ {
 		flight := flights.Flights[i]
-		departureTime := time.Unix(flight.TimePosition, 0).Format("15:04 MST")
+		departureTime := time.Unix(flight.FirstSeen, 0).Format("15:04 MST")
 		
-		sb.WriteString(fmt.Sprintf("- **%s**: Departed at %s", 
-			strings.TrimSpace(flight.Callsign),
-			departureTime))
+		// Clean up callsign (remove trailing spaces)
+		callsign := strings.TrimSpace(flight.Callsign)
+		
+		sb.WriteString(fmt.Sprintf("- **%s**: Departed at %s", callsign, departureTime))
+		
+		// Add departure airport
+		departureCode := flight.EstDepartureAirport
+		// Try to convert ICAO code to more recognizable 3-letter code if possible
+		for code, icao := range AirportCodeMap {
+			if icao == flight.EstDepartureAirport {
+				departureCode = code
+				break
+			}
+		}
 		
 		// Add destination if available
-		if flight.Destination != "" {
-			destinationCode := flight.Destination
+		if flight.EstArrivalAirport != "" {
+			destinationCode := flight.EstArrivalAirport
 			// Try to convert ICAO code to more recognizable 3-letter code if possible
 			for code, icao := range AirportCodeMap {
-				if icao == flight.Destination {
+				if icao == flight.EstArrivalAirport {
 					destinationCode = code
 					break
 				}
@@ -92,12 +105,11 @@ func formatFlightResponse(flights *DepartureFlights, airport string, start, end 
 			sb.WriteString(fmt.Sprintf(" to %s", destinationCode))
 		}
 		
-		if flight.Velocity > 0 {
-			sb.WriteString(fmt.Sprintf(", Speed: %.0f km/h", flight.Velocity*3.6)) // Convert m/s to km/h
-		}
-		
-		if flight.BaroAltitude > 0 {
-			sb.WriteString(fmt.Sprintf(", Altitude: %.0f m", flight.BaroAltitude))
+		// Add flight duration if available
+		if flight.LastSeen > flight.FirstSeen {
+			duration := flight.LastSeen - flight.FirstSeen
+			minutes := duration / 60
+			sb.WriteString(fmt.Sprintf(", Duration: %d min", minutes))
 		}
 		
 		sb.WriteString("\n")

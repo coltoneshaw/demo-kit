@@ -219,7 +219,7 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 		"**Current Unix Time:** " + fmt.Sprintf("%d", time.Now().Unix()) + "\n" +
 		"**24 Hours Ago:** " + fmt.Sprintf("%d", time.Now().Add(-24*time.Hour).Unix()) + "\n\n" +
 		"**Note:** 3-letter airport codes (like SFO, LAX, JFK) are automatically converted to 4-letter ICAO codes (KSFO, KLAX, KJFK).\n" +
-		"Information includes flight callsign, departure time, destination, speed, and altitude when available."
+		"Information includes flight callsign, departure time, destination, and flight duration when available."
 
 	response := MattermostResponse{
 		Text:         helpText,

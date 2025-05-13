@@ -8,24 +8,18 @@ type OpenSkyResponse struct {
 
 // Flight represents a processed flight from OpenSky data
 type Flight struct {
-	Icao24        string  `json:"icao24"`             // ICAO 24-bit address of the transponder
-	Callsign      string  `json:"callsign"`           // Callsign of the vehicle
-	Origin        string  `json:"origin"`             // Origin airport ICAO code
-	Destination   string  `json:"estArrivalAirport"`  // Destination airport ICAO code
-	TimePosition  int64   `json:"timePosition"`  // Unix timestamp for the last position update
-	LastContact   int64   `json:"lastContact"`   // Unix timestamp for the last update in general
-	Longitude     float64 `json:"longitude"`     // WGS-84 longitude in decimal degrees
-	Latitude      float64 `json:"latitude"`      // WGS-84 latitude in decimal degrees
-	BaroAltitude  float64 `json:"baroAltitude"`  // Barometric altitude in meters
-	OnGround      bool    `json:"onGround"`      // Indicates if the position was retrieved from a surface position report
-	Velocity      float64 `json:"velocity"`      // Velocity over ground in m/s
-	TrueTrack     float64 `json:"trueTrack"`     // True track in decimal degrees (0 is north)
-	VerticalRate  float64 `json:"verticalRate"`  // Vertical rate in m/s
-	Sensors       []int   `json:"sensors"`       // IDs of the receivers which contributed to this state vector
-	GeoAltitude   float64 `json:"geoAltitude"`   // Geometric altitude in meters
-	Squawk        string  `json:"squawk"`        // The transponder code
-	Spi           bool    `json:"spi"`           // Whether flight status indicates special purpose indicator
-	PositionSource int    `json:"positionSource"` // Origin of this state's position
+	Icao24                        string `json:"icao24"`                        // ICAO 24-bit address of the transponder
+	FirstSeen                     int64  `json:"firstSeen"`                     // Time of first message received
+	EstDepartureAirport           string `json:"estDepartureAirport"`           // ICAO code of the estimated departure airport
+	LastSeen                      int64  `json:"lastSeen"`                      // Time of last message received
+	EstArrivalAirport             string `json:"estArrivalAirport"`             // ICAO code of the estimated arrival airport
+	Callsign                      string `json:"callsign"`                      // Callsign of the vehicle
+	EstDepartureAirportHorizDistance int  `json:"estDepartureAirportHorizDistance"` // Horizontal distance from departure airport
+	EstDepartureAirportVertDistance   int  `json:"estDepartureAirportVertDistance"`   // Vertical distance from departure airport
+	EstArrivalAirportHorizDistance   int  `json:"estArrivalAirportHorizDistance"`   // Horizontal distance from arrival airport
+	EstArrivalAirportVertDistance     int  `json:"estArrivalAirportVertDistance"`     // Vertical distance from arrival airport
+	DepartureAirportCandidatesCount  int  `json:"departureAirportCandidatesCount"`  // Number of other possible departure airports
+	ArrivalAirportCandidatesCount    int  `json:"arrivalAirportCandidatesCount"`    // Number of other possible arrival airports
 }
 
 // DepartureFlights represents a collection of flights departing from an airport
