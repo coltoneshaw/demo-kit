@@ -66,6 +66,11 @@ setup() {
                 # Update the env_vars.env file
                 sed -i "s|MATTERMOST_WEBHOOK_URL=.*|MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" ./files/env_vars.env
                 echo "Updated env_vars.env with webhook URL"
+                
+                # Restart the weather-app container to pick up the new webhook URL
+                echo "Restarting weather-app container..."
+                docker restart weather-app
+                echo "Weather app restarted successfully"
             else
                 echo "Failed to create webhook"
             fi
