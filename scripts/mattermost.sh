@@ -225,17 +225,18 @@ setupWebhooks() {
             echo "Found existing weather webhook in Mattermost with different ID: $ACTUAL_ID"
             # Get the ID of the existing webhook
             EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "weather" | grep "ID:" | awk '{print $2}')
-          if [ -n "$EXISTING_ID" ]; then
-            echo "Updating webhook URL in env_vars.env to match existing webhook ID: $EXISTING_ID"
-            WEBHOOK_URL="http://mattermost:8065/hooks/$EXISTING_ID"
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-              sed -i '' "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
-            else
-              sed -i "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+            if [ -n "$EXISTING_ID" ]; then
+              echo "Updating webhook URL in env_vars.env to match existing webhook ID: $EXISTING_ID"
+              WEBHOOK_URL="http://mattermost:8065/hooks/$EXISTING_ID"
+              if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+              else
+                sed -i "s|WEATHER_MATTERMOST_WEBHOOK_URL=.*|WEATHER_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+              fi
+              echo "Restarting weather-app container..."
+              docker restart weather-app
+              echo "Weather app restarted successfully with updated webhook URL"
             fi
-            echo "Restarting weather-app container..."
-            docker restart weather-app
-            echo "Weather app restarted successfully with updated webhook URL"
           fi
         else
           echo "Weather webhook no longer exists in Mattermost, recreating..."
@@ -287,20 +288,21 @@ setupWebhooks() {
             echo "Found existing flight webhook in Mattermost with different ID: $ACTUAL_ID"
             # Get the ID of the existing webhook
             EXISTING_ID=$(echo "$WEBHOOK_LIST" | grep -A 3 "flight-app" | grep "ID:" | awk '{print $2}')
-          if [ -n "$EXISTING_ID" ]; then
-            echo "Updating webhook URL in env_vars.env to match existing webhook ID: $EXISTING_ID"
-            WEBHOOK_URL="http://mattermost:8065/hooks/$EXISTING_ID"
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-              sed -i '' "s|FLIGHTS_MATTERMOST_WEBHOOK_URL=.*|FLIGHTS_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
-            else
-              sed -i "s|FLIGHTS_MATTERMOST_WEBHOOK_URL=.*|FLIGHTS_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
-            fi
-            echo "Restarting flightaware-app container..."
-            if docker ps | grep -q flightaware-app; then
-              docker restart flightaware-app
-              echo "Flight app restarted successfully with updated webhook URL"
-            else
-              echo "Warning: flightaware-app container not found, will be updated when container starts"
+            if [ -n "$EXISTING_ID" ]; then
+              echo "Updating webhook URL in env_vars.env to match existing webhook ID: $EXISTING_ID"
+              WEBHOOK_URL="http://mattermost:8065/hooks/$EXISTING_ID"
+              if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s|FLIGHTS_MATTERMOST_WEBHOOK_URL=.*|FLIGHTS_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+              else
+                sed -i "s|FLIGHTS_MATTERMOST_WEBHOOK_URL=.*|FLIGHTS_MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+              fi
+              echo "Restarting flightaware-app container..."
+              if docker ps | grep -q flightaware-app; then
+                docker restart flightaware-app
+                echo "Flight app restarted successfully with updated webhook URL"
+              else
+                echo "Warning: flightaware-app container not found, will be updated when container starts"
+              fi
             fi
           fi
         else
