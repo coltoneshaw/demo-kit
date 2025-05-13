@@ -114,6 +114,9 @@ func (c *Client) CreateUsers() error {
 		}
 		_, resp, err = c.API.PatchUser(context.Background(), createdUser.Id, patch)
 		if err != nil {
+			if resp != nil {
+				return fmt.Errorf("failed to make user system admin: %v, response status code: %v", err, resp.StatusCode)
+			}
 			return fmt.Errorf("failed to make user system admin: %v", err)
 		}
 	} else {
@@ -247,7 +250,11 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 
 		_, resp, err := c.API.CreateCommand(context.Background(), flightsCmd)
 		if err != nil {
-			fmt.Printf("Warning: Failed to create flights command: %v\n", err)
+			if resp != nil {
+				fmt.Printf("Warning: Failed to create flights command: %v, response status code: %v\n", err, resp.StatusCode)
+			} else {
+				fmt.Printf("Warning: Failed to create flights command: %v\n", err)
+			}
 		} else {
 			fmt.Println("/flights command created successfully")
 		}
@@ -272,7 +279,11 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 
 		_, resp, err := c.API.CreateCommand(context.Background(), weatherCmd)
 		if err != nil {
-			fmt.Printf("Warning: Failed to create weather command: %v\n", err)
+			if resp != nil {
+				fmt.Printf("Warning: Failed to create weather command: %v, response status code: %v\n", err, resp.StatusCode)
+			} else {
+				fmt.Printf("Warning: Failed to create weather command: %v\n", err)
+			}
 		} else {
 			fmt.Println("/weather command created successfully")
 		}
@@ -354,6 +365,9 @@ func (c *Client) CreateAppWebhook(channelID, appName, displayName, description, 
 
 	newHook, resp, err := c.API.CreateIncomingWebhook(context.Background(), hook)
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("failed to create webhook: %v, response status code: %v", err, resp.StatusCode)
+		}
 		return fmt.Errorf("failed to create webhook: %v", err)
 	}
 
