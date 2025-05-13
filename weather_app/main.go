@@ -417,7 +417,7 @@ func main() {
 				var subList strings.Builder
 				subList.WriteString("Your active weather subscriptions:\n\n")
 				for _, sub := range subs {
-					subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %s\n\n",
+					subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %d ms\n\n",
 						sub.ID, sub.Location, sub.UpdateFrequency))
 				}
 				subList.WriteString("To unsubscribe, use: `/weather --unsubscribe --id SUBSCRIPTION_ID`")
