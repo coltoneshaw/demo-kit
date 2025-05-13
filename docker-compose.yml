@@ -131,3 +131,18 @@ services:
       - "8045:8045"
     env_file:
       - ./files/env_vars.env
+  weather-app:
+    container_name: weather-app
+    build:
+      context: ./weather_app
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - MATTERMOST_WEBHOOK_URL=http://mattermost:8065/hooks/your-webhook-id
+    volumes:
+      - ./volumes/weather-app:/app/data
+    depends_on:
+      - mattermost
