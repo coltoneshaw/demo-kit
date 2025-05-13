@@ -45,8 +45,8 @@ func NewClient(serverURL, adminUser, adminPass, teamName string) *Client {
 func (c *Client) Login() error {
 	_, resp, err := c.API.Login(context.Background(), c.AdminUser, c.AdminPass)
 	if err != nil {
-		if resp != nil && resp.Error != nil {
-			return fmt.Errorf("login failed: %v, response: %v", err, resp.Error)
+		if resp != nil {
+			return fmt.Errorf("login failed: %v, response status code: %v", err, resp.StatusCode)
 		}
 		return fmt.Errorf("login failed: %v", err)
 	}
@@ -101,7 +101,7 @@ func (c *Client) CreateUsers() error {
 
 		createdUser, resp, err := c.API.CreateUser(sysadmin)
 		if err != nil {
-			return fmt.Errorf("failed to create sysadmin: %v, response: %v", err, resp.Error)
+			return fmt.Errorf("failed to create sysadmin: %v, response status code: %v", err, resp.StatusCode)
 		}
 
 		// Make user a system admin
@@ -127,7 +127,7 @@ func (c *Client) CreateUsers() error {
 
 		_, resp, err := c.API.CreateUser(user1)
 		if err != nil {
-			return fmt.Errorf("failed to create user-1: %v, response: %v", err, resp.Error)
+			return fmt.Errorf("failed to create user-1: %v, response status code: %v", err, resp.StatusCode)
 		}
 	} else {
 		fmt.Println("User 'user-1' already exists")
@@ -167,7 +167,7 @@ func (c *Client) CreateTeam() error {
 		var createResp *model.Response
 		team, createResp, err = c.API.CreateTeam(newTeam)
 		if err != nil {
-			return fmt.Errorf("failed to create team: %v, response: %v", err, createResp.Error)
+			return fmt.Errorf("failed to create team: %v, response status code: %v", err, createResp.StatusCode)
 		}
 	} else {
 		fmt.Printf("Team '%s' already exists\n", c.TeamName)
@@ -182,7 +182,11 @@ func (c *Client) CreateTeam() error {
 	for _, user := range users {
 		if user.Username == "sysadmin" || user.Username == "user-1" {
 			_, resp, err := c.API.AddTeamMember(team.Id, user.Id)
-			if err != nil && !strings.Contains(resp.Error.Message, "already a member") {
+			if err != nil {
+				// Check if the error is because the user is already a member
+				if resp.StatusCode == 400 {
+					continue
+				}
 				return fmt.Errorf("failed to add user to team: %v", err)
 			}
 		}
