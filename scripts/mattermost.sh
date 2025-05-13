@@ -87,8 +87,14 @@ updateWebhookConfig() {
   WEBHOOK_URL="http://mattermost:8065/hooks/$WEBHOOK_ID"
   echo "Setting webhook URL: $WEBHOOK_URL"
   
-  # Update the env_vars.env file
-  sed -i "s|MATTERMOST_WEBHOOK_URL=.*|MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+  # Update the env_vars.env file - use different sed syntax for macOS compatibility
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS version of sed requires an empty string after -i
+    sed -i '' "s|MATTERMOST_WEBHOOK_URL=.*|MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+  else
+    # Linux version
+    sed -i "s|MATTERMOST_WEBHOOK_URL=.*|MATTERMOST_WEBHOOK_URL=$WEBHOOK_URL|" "$ENV_FILE"
+  fi
   echo "Updated env_vars.env with webhook URL"
   
   # Restart the weather-app container to pick up the new webhook URL
