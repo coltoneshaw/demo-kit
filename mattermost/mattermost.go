@@ -239,7 +239,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Method:       "P",
 			URL:          c.FlightAppURL,
 			CreatorId:    "", // Will be set to current user
-			Title:        "Flight Departures",
+			DisplayName:  "Flight Departures",
 			Description:  "Get flight departures",
 			AutoComplete: true,
 			Username:     "flight-bot",
