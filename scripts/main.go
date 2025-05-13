@@ -3,92 +3,101 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
+
+	"github.com/spf13/cobra"
+	"scripts/general"
+	"scripts/keycloak"
+	"scripts/mattermost"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide a command and subcommand")
-		fmt.Println("Usage: ./scripts/main [general|keycloak|mattermost] [subcommand]")
-		os.Exit(1)
+	// Root command
+	rootCmd := &cobra.Command{
+		Use:   "scripts",
+		Short: "DevOps scripts for Mattermost and Keycloak",
+		Long:  `A collection of utility scripts for managing Mattermost and Keycloak deployments.`,
 	}
 
-	command := os.Args[1]
-
-	// Shift arguments to remove the first one
-	var subArgs []string
-	if len(os.Args) > 2 {
-		subArgs = os.Args[2:]
+	// General command
+	generalCmd := &cobra.Command{
+		Use:   "general",
+		Short: "General utility commands",
+		Long:  `Commands for general system information and utilities.`,
 	}
+	rootCmd.AddCommand(generalCmd)
 
-	switch strings.ToLower(command) {
-	case "general":
-		handleGeneralCommand(subArgs)
-	case "keycloak":
-		handleKeycloakCommand(subArgs)
-	case "mattermost":
-		handleMattermostCommand(subArgs)
-	default:
-		fmt.Printf("Unknown command: %s\n", command)
-		fmt.Println("Available commands: general, keycloak, mattermost")
-		os.Exit(1)
+	// General subcommands
+	loginsCmd := &cobra.Command{
+		Use:   "logins",
+		Short: "Display login information for services",
+		Long:  `Display login information for Mattermost, Keycloak, Grafana, and other services.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			general.Logins()
+		},
 	}
-}
+	generalCmd.AddCommand(loginsCmd)
 
-func handleGeneralCommand(args []string) {
-	if len(args) == 0 {
-		fmt.Println("Please provide a subcommand for general")
-		fmt.Println("Available subcommands: logins")
-		os.Exit(1)
+	// Keycloak command
+	keycloakCmd := &cobra.Command{
+		Use:   "keycloak",
+		Short: "Keycloak management commands",
+		Long:  `Commands for managing Keycloak backups and restoration.`,
 	}
+	rootCmd.AddCommand(keycloakCmd)
 
-	subcommand := args[0]
-	switch strings.ToLower(subcommand) {
-	case "logins":
-		general.Logins()
-	default:
-		fmt.Printf("Unknown subcommand for general: %s\n", subcommand)
-		fmt.Println("Available subcommands: logins")
-		os.Exit(1)
+	// Keycloak subcommands
+	restoreCmd := &cobra.Command{
+		Use:   "restore",
+		Short: "Restore Keycloak from backup",
+		Long:  `Restore Keycloak data from a backup file if the data directory doesn't exist.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			keycloak.Restore()
+		},
 	}
-}
+	keycloakCmd.AddCommand(restoreCmd)
 
-func handleKeycloakCommand(args []string) {
-	if len(args) == 0 {
-		fmt.Println("Please provide a subcommand for keycloak")
-		fmt.Println("Available subcommands: restore, backup")
-		os.Exit(1)
+	backupCmd := &cobra.Command{
+		Use:   "backup",
+		Short: "Backup Keycloak data",
+		Long:  `Create a backup of the Keycloak data directory.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			keycloak.Backup()
+		},
 	}
+	keycloakCmd.AddCommand(backupCmd)
 
-	subcommand := args[0]
-	switch strings.ToLower(subcommand) {
-	case "restore":
-		keycloak.Restore()
-	case "backup":
-		keycloak.Backup()
-	default:
-		fmt.Printf("Unknown subcommand for keycloak: %s\n", subcommand)
-		fmt.Println("Available subcommands: restore, backup")
-		os.Exit(1)
+	// Mattermost command
+	mattermostCmd := &cobra.Command{
+		Use:   "mattermost",
+		Short: "Mattermost management commands",
+		Long:  `Commands for managing Mattermost setup and configuration.`,
 	}
-}
+	rootCmd.AddCommand(mattermostCmd)
 
-func handleMattermostCommand(args []string) {
-	if len(args) == 0 {
-		fmt.Println("Please provide a subcommand for mattermost")
-		fmt.Println("Available subcommands: setup, echologins")
-		os.Exit(1)
+	// Mattermost subcommands
+	setupCmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Set up Mattermost with test data",
+		Long:  `Configure Mattermost with test users, teams, and webhooks.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			mattermost.Setup()
+		},
 	}
+	mattermostCmd.AddCommand(setupCmd)
 
-	subcommand := args[0]
-	switch strings.ToLower(subcommand) {
-	case "setup":
-		mattermost.Setup()
-	case "echologins":
-		mattermost.EchoLogins()
-	default:
-		fmt.Printf("Unknown subcommand for mattermost: %s\n", subcommand)
-		fmt.Println("Available subcommands: setup, echologins")
+	echoLoginsCmd := &cobra.Command{
+		Use:   "echologins",
+		Short: "Display Mattermost login information",
+		Long:  `Display login credentials for Mattermost users.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			mattermost.EchoLogins()
+		},
+	}
+	mattermostCmd.AddCommand(echoLoginsCmd)
+
+	// Execute the root command
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }
