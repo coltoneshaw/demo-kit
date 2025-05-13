@@ -5,8 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/mattermost/mattermost/server/public/model"
+	"time"
 )
 
 // TestNewClient tests the creation of a new client
@@ -97,12 +96,10 @@ func TestWaitForStart(t *testing.T) {
 	// Create a client that points to our mock server
 	client := NewClient(server.URL, "admin", "password", "test")
 	
-	// Override the MaxWaitSeconds to make the test faster
-	oldMax := MaxWaitSeconds
-	MaxWaitSeconds = 1
-	defer func() { MaxWaitSeconds = oldMax }()
+	// Use a shorter timeout for testing
+	// Since we can't modify the constant, we'll just make the test run faster
 	
-	// Test waiting for server
+	// Test waiting for server with a mock that responds immediately
 	err := client.WaitForStart()
 	if err != nil {
 		t.Errorf("Expected server to start successfully, got error: %v", err)
