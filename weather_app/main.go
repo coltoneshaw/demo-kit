@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -218,9 +219,41 @@ func main() {
 		log.Printf("Successfully sent weather response to channel: %s (%s)", channelName, channelID)
 	})
 
+	// Create a directory for static files if it doesn't exist
+	staticDir := "./static"
+	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(staticDir, 0755); err != nil {
+			log.Fatalf("Failed to create static directory: %v", err)
+		}
+	}
+	
+	// Serve static files
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+	
+	// Special handler for bot.png
+	http.HandleFunc("/bot.png", func(w http.ResponseWriter, r *http.Request) {
+		// Path to the bot.png file
+		botImagePath := filepath.Join(staticDir, "bot.png")
+		
+		// Check if the file exists
+		if _, err := os.Stat(botImagePath); os.IsNotExist(err) {
+			log.Printf("bot.png not found at %s", botImagePath)
+			http.Error(w, "Image not found", http.StatusNotFound)
+			return
+		}
+		
+		// Set the content type
+		w.Header().Set("Content-Type", "image/png")
+		
+		// Serve the file
+		http.ServeFile(w, r, botImagePath)
+	})
+	
 	// Start the server
 	port := "8085"
+	serverURL := fmt.Sprintf("http://0.0.0.0:%s", port)
 	log.Printf("Server starting on port %s (listening on all interfaces)...", port)
+	log.Printf("Bot image will be available at %s/bot.png", serverURL)
 	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
