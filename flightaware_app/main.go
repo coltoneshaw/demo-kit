@@ -11,12 +11,23 @@ import (
 
 func main() {
 	// Set up logging
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("Starting FlightAware application...")
 
 	// Set up HTTP server
 	http.HandleFunc("/flights/departure", handleFlightDepartureRequest)
 	http.HandleFunc("/health", handleHealthCheck)
 	http.HandleFunc("/webhook", handleIncomingWebhook)
+	
+	// Add a debug endpoint to log request details
+	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Debug request received: %s %s", r.Method, r.URL.Path)
+		log.Printf("Headers: %v", r.Header)
+		body, _ := io.ReadAll(r.Body)
+		log.Printf("Body: %s", string(body))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Debug information logged"))
+	})
 
 	// Start the server
 	port := os.Getenv("PORT")

@@ -37,9 +37,13 @@ type DepartureFlights struct {
 
 // MattermostPayload represents the incoming webhook payload from Mattermost
 type MattermostPayload struct {
-	Text    string `json:"text"`
-	UserID  string `json:"user_id"`
-	Channel string `json:"channel_name"`
+	Text       string `json:"text"`
+	UserID     string `json:"user_id"`
+	Channel    string `json:"channel_name"`
+	ChannelID  string `json:"channel_id"`
+	Command    string `json:"command"`
+	TeamDomain string `json:"team_domain"`
+	Token      string `json:"token"`
 }
 
 // MattermostResponse represents the response to send back to Mattermost

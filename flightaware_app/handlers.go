@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -69,14 +70,52 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the incoming request
-	var payload MattermostPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Printf("Error parsing webhook payload: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	// Read the request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Error reading request body: %v", err)
+		http.Error(w, "Error reading request body", http.StatusBadRequest)
 		return
 	}
-
+	
+	// Log the raw payload for debugging
+	log.Printf("Received webhook payload: %s", string(body))
+	
+	// Try to parse as Mattermost payload
+	var payload MattermostPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		// If standard parsing fails, try to handle slash command format
+		// Slash commands come as form data
+		if err := r.ParseForm(); err != nil {
+			log.Printf("Error parsing form data: %v", err)
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+		
+		// Extract values from form data
+		text := r.FormValue("text")
+		channelID := r.FormValue("channel_id")
+		userID := r.FormValue("user_id")
+		
+		if text == "" || channelID == "" {
+			log.Printf("Missing required form fields")
+			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			return
+		}
+		
+		// Process the command
+		args := parseCommand(text)
+		if len(args) >= 1 && args[0] == "departures" {
+			handleDeparturesCommand(w, args[1:], channelID, userID)
+			return
+		}
+		
+		// Unknown command
+		sendHelpResponse(w, channelID)
+		return
+	}
+	
+	// If we got here, we successfully parsed the JSON payload
 	// Extract command and arguments
 	text := payload.Text
 	channelID := payload.Channel
