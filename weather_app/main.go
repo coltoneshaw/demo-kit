@@ -417,7 +417,36 @@ func main() {
 			userName, userID, channelName, channelID, text)
 
 		// Check for simple commands first
-		if text == "limits" {
+		if text == "help" || text == "--help" {
+			helpText := "**Weather Bot Commands**\n\n" +
+				"**Basic Commands:**\n" +
+				"- `/weather <location>` - Get current weather for a location\n" +
+				"- `/weather help` - Show this help message\n" +
+				"- `/weather limits` - Show API usage limits and current usage\n\n" +
+				
+				"**Subscription Commands:**\n" +
+				"- `/weather --subscribe --location <location> --update-frequency <ms>` - Subscribe to weather updates\n" +
+				"- `/weather --unsubscribe` - List your active subscriptions\n" +
+				"- `/weather --unsubscribe --id <subscription_id>` - Unsubscribe from specific weather updates\n\n" +
+				
+				"**Parameters:**\n" +
+				"- `location` - City name, zip code, or coordinates (e.g., 'New York', '10001', '40.7128,-74.0060')\n" +
+				"- `update-frequency` - How often to send updates in milliseconds (e.g., 3600000 for hourly) or duration (e.g., 1h, 30m)\n" +
+				"- `subscription_id` - ID of an active subscription\n\n" +
+				
+				"**Examples:**\n" +
+				"- `/weather London` - Get current weather for London\n" +
+				"- `/weather --subscribe --location Tokyo --update-frequency 3600000` - Get hourly weather updates for Tokyo\n" +
+				"- `/weather --subscribe --location \"San Francisco\" --update-frequency 1h` - Get hourly weather updates for San Francisco"
+			
+			response := MattermostResponse{
+				Text:         helpText,
+				ResponseType: "ephemeral",
+				ChannelID:    channelID,
+			}
+			json.NewEncoder(w).Encode(response)
+			return
+		} else if text == "limits" {
 			hourlyUsage, dailyUsage := subscriptionManager.CalculateAPIUsage()
 			
 			limitsText := fmt.Sprintf("**Weather API Usage Limits**\n\n"+
@@ -584,7 +613,7 @@ func main() {
 		if location == "" && (subscribe || !unsubscribe) {
 			log.Printf("No location provided, sending help message")
 			response := MattermostResponse{
-				Text:         "Please provide a location. Example: `/weather New York` or `/weather --location London, UK --subscribe --update-frequency 30m`",
+				Text:         "Please provide a location. Example: `/weather New York` or `/weather --location London, UK --subscribe --update-frequency 30m`\n\nUse `/weather help` for a complete list of commands.",
 				ResponseType: "ephemeral",
 				ChannelID:    channelID,
 			}
