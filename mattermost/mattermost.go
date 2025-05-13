@@ -107,7 +107,7 @@ func (c *Client) CreateUsers() error {
 		if err != nil {
 			return fmt.Errorf("failed to create sysadmin: %v, response status code: %v", err, resp.StatusCode)
 		}
-		fmt.Println("✅ Successfully created system admin user 'sysadmin'")
+		fmt.Printf("✅ Successfully created system admin user '%s' (ID: %s)\n", createdUser.Username, createdUser.Id)
 
 	} else {
 		fmt.Println("User 'sysadmin' already exists")
@@ -122,11 +122,11 @@ func (c *Client) CreateUsers() error {
 			Password: "Testpassword123!",
 		}
 
-		_, resp, err := c.API.CreateUser(context.Background(), user1)
+		createdUser1, resp, err := c.API.CreateUser(context.Background(), user1)
 		if err != nil {
 			return fmt.Errorf("failed to create user-1: %v, response status code: %v", err, resp.StatusCode)
 		}
-		fmt.Println("✅ Successfully created regular user 'user-1'")
+		fmt.Printf("✅ Successfully created regular user '%s' (ID: %s)\n", createdUser1.Username, createdUser1.Id)
 	} else {
 		fmt.Println("User 'user-1' already exists")
 	}
@@ -170,7 +170,7 @@ func (c *Client) CreateTeam() error {
 		if err != nil {
 			return fmt.Errorf("failed to create team: %v, response status code: %v", err, createResp.StatusCode)
 		}
-		fmt.Printf("✅ Successfully created team '%s'\n", c.TeamName)
+		fmt.Printf("✅ Successfully created team '%s' (ID: %s)\n", team.Name, team.Id)
 	} else {
 		fmt.Printf("Team '%s' already exists\n", c.TeamName)
 	}
@@ -241,7 +241,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Username:     "flight-bot",
 		}
 
-		_, resp, err := c.API.CreateCommand(context.Background(), flightsCmd)
+		createdCmd, resp, err := c.API.CreateCommand(context.Background(), flightsCmd)
 		if err != nil {
 			if resp != nil {
 				fmt.Printf("Warning: Failed to create flights command: %v, response status code: %v\n", err, resp.StatusCode)
@@ -249,7 +249,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 				fmt.Printf("Warning: Failed to create flights command: %v\n", err)
 			}
 		} else {
-			fmt.Println("✅ /flights command created successfully")
+			fmt.Printf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
 		}
 	} else {
 		fmt.Println("/flights command already exists")
@@ -270,7 +270,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 			Username:     "weather-bot",
 		}
 
-		_, resp, err := c.API.CreateCommand(context.Background(), weatherCmd)
+		createdCmd, resp, err := c.API.CreateCommand(context.Background(), weatherCmd)
 		if err != nil {
 			if resp != nil {
 				fmt.Printf("Warning: Failed to create weather command: %v, response status code: %v\n", err, resp.StatusCode)
@@ -278,7 +278,7 @@ func (c *Client) CreateSlashCommands(teamID string) error {
 				fmt.Printf("Warning: Failed to create weather command: %v\n", err)
 			}
 		} else {
-			fmt.Println("✅ /weather command created successfully")
+			fmt.Printf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
 		}
 	} else {
 		fmt.Println("/weather command already exists")
