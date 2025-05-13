@@ -95,10 +95,11 @@ func main() {
 	})
 
 	http.HandleFunc("/weather", func(w http.ResponseWriter, r *http.Request) {
-		// Get location from query parameter, default to Wendell, NC
+		// Get location from query parameter
 		location := r.URL.Query().Get("location")
 		if location == "" {
-			location = "27591 us" // Default to Wendell, NC
+			http.Error(w, "Location parameter is required", http.StatusBadRequest)
+			return
 		}
 
 		// Get weather data
@@ -162,8 +163,8 @@ func main() {
 		log.Printf("Processing weather request from user: %s (%s) in channel: %s (%s) with text: %s", 
 			userName, userID, channelName, channelID, text)
 		
-		// Get location from text parameter, default to Wendell, NC
-		location := "27591 us" // Default to Wendell, NC
+		// Get location from text parameter
+		var location string
 		if text != "" {
 			// Check if text contains "--location" flag
 			if len(text) > 11 && text[:11] == "--location " {
@@ -172,6 +173,18 @@ func main() {
 			} else {
 				location = text
 			}
+		}
+		
+		// Check if location is provided
+		if location == "" {
+			log.Printf("No location provided, sending help message")
+			response := MattermostResponse{
+				Text:         "Please provide a location. Example: `/weather New York` or `/weather --location London, UK`",
+				ResponseType: "ephemeral", // Only visible to the user who triggered the command
+				ChannelID:    channelID,
+			}
+			json.NewEncoder(w).Encode(response)
+			return
 		}
 		
 		// Get weather data
