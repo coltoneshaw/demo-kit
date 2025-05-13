@@ -5,25 +5,24 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 // TestNewClient tests the creation of a new client
 func TestNewClient(t *testing.T) {
 	client := NewClient("http://localhost:8065", "admin", "password", "test")
-	
+
 	if client.ServerURL != "http://localhost:8065" {
 		t.Errorf("Expected ServerURL to be http://localhost:8065, got %s", client.ServerURL)
 	}
-	
+
 	if client.AdminUser != "admin" {
 		t.Errorf("Expected AdminUser to be admin, got %s", client.AdminUser)
 	}
-	
+
 	if client.AdminPass != "password" {
 		t.Errorf("Expected AdminPass to be password, got %s", client.AdminPass)
 	}
-	
+
 	if client.TeamName != "test" {
 		t.Errorf("Expected TeamName to be test, got %s", client.TeamName)
 	}
@@ -46,10 +45,10 @@ func TestLogin(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	
+
 	// Create a client that points to our mock server
 	client := NewClient(server.URL, "admin", "password", "test")
-	
+
 	// Test successful login
 	err := client.Login()
 	if err != nil {
@@ -69,10 +68,10 @@ func TestLoginFailure(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	
+
 	// Create a client that points to our mock server
 	client := NewClient(server.URL, "admin", "wrong-password", "test")
-	
+
 	// Test failed login
 	err := client.Login()
 	if err == nil {
@@ -92,13 +91,13 @@ func TestWaitForStart(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	
+
 	// Create a client that points to our mock server
 	client := NewClient(server.URL, "admin", "password", "test")
-	
+
 	// Use a shorter timeout for testing
 	// Since we can't modify the constant, we'll just make the test run faster
-	
+
 	// Test waiting for server with a mock that responds immediately
 	err := client.WaitForStart()
 	if err != nil {
