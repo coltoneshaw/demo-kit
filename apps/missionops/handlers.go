@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -81,6 +83,9 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request, missionManage
 				return
 			case "status":
 				handleStatusCommand(client, w, args[1:], channelID, missionManager, subscriptionManager)
+				return
+			case "complete":
+				handleCompleteCommand(client, w, r, args[1:], channelID, userID, missionManager)
 				return
 			case "subscribe":
 				handleSubscribeCommand(client, w, args[1:], channelID, userID, subscriptionManager)
@@ -577,6 +582,7 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 		"- `/mission start --name [name] --callsign [callsign] --departureAirport [code] --arrivalAirport [code] --crew @user1 @user2 ...` - Create a new mission\n" +
 		"- `/mission list` - List all missions\n" +
 		"- `/mission status [status]` - Update mission status (run in mission channel to skip --id)\n" +
+		"- `/mission complete` - Fill out and submit a post-mission report form\n" +
 		"- `/mission help` - Show this help message\n\n" +
 		"**Subscription Commands:**\n" +
 		"- `/mission subscribe --type [status1,status2] --frequency [seconds]` - Subscribe to mission status updates\n" +
@@ -593,6 +599,7 @@ func sendHelpResponse(w http.ResponseWriter, channelID string) {
 		"- `/mission status in-air`\n" +
 		"- `/mission status completed`\n" +
 		"- `/mission status cancelled --id [mission_id]` (when not in mission channel)\n" +
+		"- `/mission complete` (in a mission channel)\n" +
 		"- `/mission subscribe --type stalled,in-air --frequency 3600` (updates hourly)\n" +
 		"- `/mission subscribe --type all --frequency 1800` (updates every 30 minutes)"
 
@@ -642,6 +649,20 @@ func getPlanningChannelID() string {
 	// For now, hardcode the channel ID
 	// In a real implementation, we'd look this up from config
 	return "mission-planning"
+}
+
+// Helper function to get the missionops app URL
+func getMissionOpsAppURL() string {
+	// Default missionops app URL
+	defaultURL := "http://missionops-app:8087"
+
+	// If we have an APP_URL environment variable set, use that instead
+	// This would be used for external access configurations like ngrok
+	if envURL := os.Getenv("APP_URL"); envURL != "" {
+		return envURL
+	}
+
+	return defaultURL
 }
 
 // SendPost creates and sends a branded post with the mission-ops-bot username
@@ -993,4 +1014,352 @@ func handleListSubscriptionsCommand(c *Client, w http.ResponseWriter, args []str
 		ChannelID:    channelID,
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleCompleteCommand creates an interactive form for post-mission reports
+func handleCompleteCommand(c *Client, w http.ResponseWriter, r *http.Request, args []string, channelID, userID string, missionManager *MissionManager) {
+	// Check if this is a request from a mission channel
+	var mission *Mission
+	var missionID string
+
+	// Parse arguments if any
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--id":
+			if i+1 < len(args) {
+				missionID = args[i+1]
+				i++
+			}
+		}
+	}
+
+	// If no mission ID provided, try to find the mission based on channel ID
+	if missionID == "" {
+		var exists bool
+		mission, exists = missionManager.GetMissionByChannelID(channelID)
+		if exists {
+			missionID = mission.ID
+		} else {
+			sendErrorResponse(w, channelID, "This command must be run in a mission channel, or provide --id [mission_id]")
+			return
+		}
+	} else {
+		// Get the mission by ID
+		var exists bool
+		mission, exists = missionManager.GetMission(missionID)
+		if !exists {
+			sendErrorResponse(w, channelID, "Mission not found with the provided ID.")
+			return
+		}
+	}
+
+	// Get the trigger ID from the request - this is needed to open a dialog
+	triggerID := r.FormValue("trigger_id")
+	if triggerID == "" {
+		log.Printf("Missing trigger_id in request")
+		sendErrorResponse(w, channelID, "Unable to open post-mission report form. Missing trigger ID.")
+		return
+	}
+
+	// Create the interactive dialog for post-mission report
+	// Always use the missionops service URL directly, not the Mattermost URL
+	appURL := getMissionOpsAppURL()
+	log.Printf("Using missionops app URL: %s", appURL)
+
+	// Use a dedicated endpoint for mission complete submissions
+	webhookURL := fmt.Sprintf("%s/mission/complete", appURL)
+	log.Printf("Using webhook URL for dialog: %s", webhookURL)
+
+	dialog := map[string]interface{}{
+		"trigger_id": triggerID,
+		"url":        webhookURL,
+		"dialog": map[string]interface{}{
+			"callback_id":       "mission_complete_dialog",
+			"title":             "Post-Mission Report",
+			"introduction_text": fmt.Sprintf("Complete mission report for: **%s** (Callsign: **%s**)", mission.Name, mission.Callsign),
+			"submit_label":      "Submit Report",
+			"notify_on_cancel":  false,
+			"state":             mission.ID,
+			"elements": []map[string]interface{}{
+				{
+					"display_name": "Mission Objectives Completion",
+					"name":         "mission_objectives_completion",
+					"type":         "select",
+					"options": []map[string]string{
+						{"text": "Yes - All objectives completed", "value": "all_completed"},
+						{"text": "Partial - Some objectives completed", "value": "partial"},
+						{"text": "No - Mission objectives not met", "value": "none"},
+					},
+					"optional": false,
+				},
+				{
+					"display_name": "Mission Duration (hours)",
+					"name":         "mission_duration",
+					"type":         "text",
+					"subtype":      "number",
+					"placeholder":  "Enter flight hours",
+					"optional":     false,
+				},
+				{
+					"display_name": "Crew Performance",
+					"name":         "crew_performance",
+					"type":         "select",
+					"options": []map[string]string{
+						{"text": "Excellent", "value": "excellent"},
+						{"text": "Good", "value": "good"},
+						{"text": "Satisfactory", "value": "satisfactory"},
+						{"text": "Needs Improvement", "value": "needs_improvement"},
+					},
+					"optional": false,
+				},
+				{
+					"display_name": "Notable Events",
+					"name":         "notable_events",
+					"type":         "textarea",
+					"placeholder":  "Enter any notable events during the mission",
+					"optional":     true,
+					"max_length":   2000,
+				},
+			},
+		},
+	}
+
+	// Send the dialog request to Mattermost
+	// This endpoint is used to open an interactive dialog
+	dialogURL := fmt.Sprintf("%s/api/v4/actions/dialogs/open", os.Getenv("MM_ServiceSettings_SiteURL"))
+
+	// Convert dialog to JSON
+	dialogJSON, err := json.Marshal(dialog)
+	if err != nil {
+		log.Printf("Error marshaling dialog JSON: %v", err)
+		sendErrorResponse(w, channelID, "Error creating post-mission report form")
+		return
+	}
+
+	// Create HTTP client
+	client := &http.Client{}
+
+	// Create POST request
+	req, err := http.NewRequest(http.MethodPost, dialogURL, bytes.NewBuffer(dialogJSON))
+	if err != nil {
+		log.Printf("Error creating dialog request: %v", err)
+		sendErrorResponse(w, channelID, "Error creating post-mission report form")
+		return
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.client.AuthToken)
+
+	// Send request
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Error sending dialog request: %v", err)
+		sendErrorResponse(w, channelID, "Error opening post-mission report form")
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check response
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Error from Mattermost API: %s (status: %d)", string(body), resp.StatusCode)
+		sendErrorResponse(w, channelID, "Error opening post-mission report form")
+		return
+	}
+
+	// Send an ephemeral response to confirm
+	response := MattermostResponse{
+		Text:         "Opening post-mission report form...",
+		ResponseType: "ephemeral",
+		ChannelID:    channelID,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// Note: We've removed the legacy handleDialogSubmission function since we now use
+// the dedicated endpoint handleMissionCompleteSubmission directly
+
+// handleMissionCompleteSubmission handles submissions from the mission complete dialog
+// This is a dedicated endpoint that only handles mission complete forms
+func handleMissionCompleteSubmission(w http.ResponseWriter, r *http.Request, missionManager *MissionManager, subscriptionManager *SubscriptionManager) {
+	ctx := context.Background()
+
+	log.Printf("✅ Received mission complete submission at dedicated endpoint: %s %s (Content-Type: %s)",
+		r.Method, r.URL.Path, r.Header.Get("Content-Type"))
+
+	// Read the request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Error reading request body: %v", err)
+		http.Error(w, "Error reading request", http.StatusBadRequest)
+		return
+	}
+
+	// Log the raw body for debugging
+	log.Printf("Mission complete raw body: %s", string(body))
+
+	// Parse the dialog submission JSON
+	var dialogSubmission struct {
+		CallbackID string                 `json:"callback_id"`
+		State      string                 `json:"state"` // Contains the mission ID
+		Submission map[string]interface{} `json:"submission"`
+		UserID     string                 `json:"user_id"`
+		ChannelID  string                 `json:"channel_id"`
+		TeamID     string                 `json:"team_id"`
+	}
+
+	if err := json.Unmarshal(body, &dialogSubmission); err != nil {
+		log.Printf("Error parsing dialog submission: %v", err)
+		http.Error(w, "Invalid submission format", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Received dialog submission: %+v", dialogSubmission)
+	log.Printf("Submission data: callback_id=%s, mission_id=%s, channelID=%s, userID=%s",
+		dialogSubmission.CallbackID, dialogSubmission.State, dialogSubmission.ChannelID, dialogSubmission.UserID)
+
+	if dialogSubmission.CallbackID != "mission_complete_dialog" {
+		log.Printf("Unexpected callback_id: %s", dialogSubmission.CallbackID)
+		http.Error(w, "Unexpected callback_id", http.StatusBadRequest)
+		return
+	}
+
+	// Get direct references to the submission values
+	submission := dialogSubmission.Submission
+	state := dialogSubmission.State
+	// channelID := dialogSubmission.ChannelID
+	userID := dialogSubmission.UserID
+
+	// Extract values from submission
+	objectivesCompletion, _ := submission["mission_objectives_completion"].(string)
+
+	// Mission duration could be a number or string depending on the form handling
+	var missionDurationStr string
+	if durationNum, ok := submission["mission_duration"].(float64); ok {
+		missionDurationStr = fmt.Sprintf("%.1f", durationNum)
+	} else if durationStr, ok := submission["mission_duration"].(string); ok {
+		missionDurationStr = durationStr
+	} else {
+		missionDurationStr = "Unknown"
+		log.Printf("Mission duration has unexpected type: %T", submission["mission_duration"])
+	}
+
+	crewPerformance, _ := submission["crew_performance"].(string)
+	notableEvents, _ := submission["notable_events"].(string)
+
+	// Get the mission
+	mission, exists := missionManager.GetMission(state)
+	if !exists {
+		log.Printf("Mission not found: %s", state)
+		http.Error(w, "Mission not found", http.StatusBadRequest)
+		return
+	}
+
+	// Get the old status for notifications
+	oldStatus := mission.Status
+
+	// Create Mattermost client
+	client, err := NewClient()
+	if err != nil {
+		log.Printf("Error creating Mattermost client: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Format the mission report message
+	reportMsg := fmt.Sprintf("# Post-Mission Report: %s\n\n", mission.Name)
+	reportMsg += fmt.Sprintf("**Mission:** %s (Callsign: **%s**)\n", mission.Name, mission.Callsign)
+	reportMsg += fmt.Sprintf("**Route:** %s → %s\n", mission.DepartureAirport, mission.ArrivalAirport)
+	reportMsg += fmt.Sprintf("**Duration:** %s hours\n", missionDurationStr)
+
+	// Format objectives completion
+	var objectivesText string
+	switch objectivesCompletion {
+	case "all_completed":
+		objectivesText = "✅ All objectives completed"
+	case "partial":
+		objectivesText = "⚠️ Partial objectives completed"
+	case "none":
+		objectivesText = "❌ Mission objectives not met"
+	default:
+		objectivesText = "Unknown"
+	}
+	reportMsg += fmt.Sprintf("**Objectives:** %s\n", objectivesText)
+
+	// Format crew performance
+	var performanceText string
+	switch crewPerformance {
+	case "excellent":
+		performanceText = "⭐⭐⭐⭐⭐ Excellent"
+	case "good":
+		performanceText = "⭐⭐⭐⭐ Good"
+	case "satisfactory":
+		performanceText = "⭐⭐⭐ Satisfactory"
+	case "needs_improvement":
+		performanceText = "⭐⭐ Needs Improvement"
+	default:
+		performanceText = "Unknown"
+	}
+	reportMsg += fmt.Sprintf("**Crew Performance:** %s\n", performanceText)
+
+	// Add notable events if provided
+	if notableEvents != "" {
+		reportMsg += fmt.Sprintf("\n## Notable Events\n%s\n", notableEvents)
+	}
+
+	// Check if we have a valid user ID
+	submitterText := "Unknown user"
+	if userID != "" {
+		submitterText = fmt.Sprintf("<@%s>", userID)
+	}
+	reportMsg += fmt.Sprintf("\n*Report submitted by %s on %s*", submitterText, time.Now().Format(time.RFC1123))
+
+	// Send the report to the mission channel (always use the mission's associated channel)
+	// This ensures the report goes to the right place even if the dialog was submitted from elsewhere
+	_, err = SendPost(ctx, client, mission.ChannelID, reportMsg)
+	if err != nil {
+		log.Printf("Error sending mission report to channel %s: %v", mission.ChannelID, err)
+	}
+
+	// Update the mission status to completed
+	if missionManager.UpdateMissionStatus(mission.ID, "completed") {
+		// Update the channel display name with the completed status emoji
+		err = client.UpdateChannelDisplayName(ctx, mission.ChannelID, mission.Callsign, mission.Name, "completed")
+		if err != nil {
+			log.Printf("Error updating channel display name: %v", err)
+		}
+
+		// Send status update message to the mission channel
+		statusMsg := "Mission status updated to: **completed**"
+		_, err = SendPost(ctx, client, mission.ChannelID, statusMsg)
+		if err != nil {
+			log.Printf("Error sending status update to mission channel: %v", err)
+		}
+
+		// Notify the mission-planning channel
+		planningMsg := fmt.Sprintf("Mission **%s** (Callsign: **%s**) status updated to: **completed**\n"+
+			"[View Channel](~%s)",
+			mission.Name, mission.Callsign, mission.ChannelName)
+
+		planningChannelID := getPlanningChannelID()
+		if planningChannelID != "" {
+			_, err := SendPost(ctx, client, planningChannelID, planningMsg)
+			if err != nil {
+				log.Printf("Error sending message to planning channel: %v", err)
+			}
+		}
+
+		// Get the updated mission
+		mission, _ = missionManager.GetMission(mission.ID)
+
+		// Notify subscribed channels of the status change
+		go notifySubscribersOfStatusChange(mission, oldStatus, subscriptionManager, client)
+	}
+
+	// Send a success response
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("{}"))
+	log.Printf("Mission complete submission processed successfully")
 }

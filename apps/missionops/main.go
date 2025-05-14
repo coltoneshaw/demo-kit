@@ -43,6 +43,11 @@ func main() {
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
 		handleIncomingWebhook(w, r, missionManager, subscriptionManager)
 	})
+	
+	// Set up dedicated mission complete handler
+	http.HandleFunc("/mission/complete", func(w http.ResponseWriter, r *http.Request) {
+		handleMissionCompleteSubmission(w, r, missionManager, subscriptionManager)
+	})
 
 	// Add a debug endpoint to log request details
 	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
