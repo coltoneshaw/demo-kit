@@ -11,7 +11,9 @@ RUN go mod download
 
 # Copy source code
 COPY *.go ./
-COPY flight_subscriptions.json ./
+
+# Create an empty subscriptions file if it doesn't exist
+RUN touch flight_subscriptions.json
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o flightaware-app .

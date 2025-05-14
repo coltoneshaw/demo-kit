@@ -149,20 +149,6 @@ func (sm *SubscriptionManager) GetSubscriptionsForChannel(channelID string) []*S
 	return subs
 }
 
-// GetSubscriptionsForUser gets all subscriptions created by a user
-func (sm *SubscriptionManager) GetSubscriptionsForUser(userID string) []*Subscription {
-	sm.Mutex.RLock()
-	defer sm.Mutex.RUnlock()
-
-	var subs []*Subscription
-	for _, sub := range sm.Subscriptions {
-		if sub.UserID == userID {
-			subs = append(subs, sub)
-		}
-	}
-	return subs
-}
-
 // CalculateAPIUsage calculates the current API usage per hour and per day
 func (sm *SubscriptionManager) CalculateAPIUsage() (hourlyUsage, dailyUsage int) {
 	sm.Mutex.RLock()

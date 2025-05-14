@@ -13,6 +13,7 @@ func main() {
 	// Define command line flags
 	setupCmd := flag.Bool("setup", false, "Run the setup process")
 	echoLoginsCmd := flag.Bool("echo-logins", false, "Display login information")
+	waitForStartCmd := flag.Bool("wait-for-start", false, "Wait for Mattermost server to start")
 	serverURL := flag.String("server", "http://localhost:8065", "Mattermost server URL")
 	adminUser := flag.String("admin", "systemadmin", "Admin username")
 	adminPass := flag.String("password", "Password123!", "Admin password")
@@ -76,8 +77,14 @@ func main() {
 		}
 	} else if *echoLoginsCmd {
 		client.EchoLogins()
+	} else if *waitForStartCmd {
+			// Message printed from Makefile instead
+		if err := client.WaitForStart(); err != nil {
+			log.Fatalf("Failed to connect to Mattermost: %v", err)
+		}
+			fmt.Println("✅ Mattermost API is responding successfully")
 	} else {
-		fmt.Println("No command specified. Use -setup or -echo-logins")
+		fmt.Println("No command specified. Use -setup, -echo-logins, or -wait-for-start")
 		fmt.Println("Use -help-config for information about the config.json file")
 		os.Exit(1)
 	}

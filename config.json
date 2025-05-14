@@ -1,42 +1,557 @@
 {
   "users": [
     {
-      "username": "admin-user",
-      "email": "admin@example.com",
+      "username": "admin.user",
+      "email": "admin@usaf-demo.gov",
       "password": "SecurePassword123!",
-      "nickname": "Administrator", 
+      "nickname": "System Administrator",
+      "firstname": "Admin",
+      "lastname": "User",
       "isSystemAdmin": true,
-      "teams": ["team1"]
+      "teams": ["usaf-team"]
     },
     {
-      "username": "regular-user",
-      "email": "user@example.com",
+      "username": "charles.armstrong",
+      "email": "armstrong.c@usaf-demo.gov",
       "password": "SecurePassword123!",
+      "nickname": "Gen. Armstrong",
+      "firstname": "Charles",
+      "lastname": "Armstrong",
+      "position": "General, USAF",
       "isSystemAdmin": false,
-      "teams": ["team1"]
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "maria.rodriguez",
+      "email": "rodriguez.m@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Col. Rodriguez",
+      "firstname": "Maria",
+      "lastname": "Rodriguez",
+      "position": "Colonel, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "james.thompson",
+      "email": "thompson.j@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Maj. Thompson",
+      "firstname": "James",
+      "lastname": "Thompson",
+      "position": "Major, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "samira.patel",
+      "email": "patel.s@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Capt. Patel",
+      "firstname": "Samira",
+      "lastname": "Patel",
+      "position": "Captain, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "david.nguyen",
+      "email": "nguyen.d@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Lt. Nguyen",
+      "firstname": "David",
+      "lastname": "Nguyen",
+      "position": "First Lieutenant, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "robert.williams",
+      "email": "williams.r@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "CMSgt. Williams",
+      "firstname": "Robert",
+      "lastname": "Williams",
+      "position": "Chief Master Sergeant, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "lisa.johnson",
+      "email": "johnson.l@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "MSgt. Johnson",
+      "firstname": "Lisa",
+      "lastname": "Johnson",
+      "position": "Master Sergeant, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "kevin.chen",
+      "email": "chen.k@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "TSgt. Chen",
+      "firstname": "Kevin",
+      "lastname": "Chen",
+      "position": "Technical Sergeant, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "ana.perez",
+      "email": "perez.a@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "SSgt. Perez",
+      "firstname": "Ana",
+      "lastname": "Perez",
+      "position": "Staff Sergeant, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "tyrone.jackson",
+      "email": "jackson.t@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "SrA. Jackson",
+      "firstname": "Tyrone",
+      "lastname": "Jackson",
+      "position": "Senior Airman, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "emma.miller",
+      "email": "miller.e@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "A1C Miller",
+      "firstname": "Emma",
+      "lastname": "Miller",
+      "position": "Airman First Class, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "jorge.martinez",
+      "email": "martinez.j@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Amn. Martinez",
+      "firstname": "Jorge",
+      "lastname": "Martinez",
+      "position": "Airman, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "barbara.washington",
+      "email": "washington.b@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Dr. Washington",
+      "firstname": "Barbara",
+      "lastname": "Washington",
+      "position": "Medical Director, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "john.smith",
+      "email": "smith.j@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Col. Smith",
+      "firstname": "John",
+      "lastname": "Smith",
+      "position": "Colonel, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "harper.wilson",
+      "email": "wilson.h@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Capt. Wilson",
+      "firstname": "Harper",
+      "lastname": "Wilson",
+      "position": "Captain, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "grace.turner",
+      "email": "turner.g@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Maj. Turner",
+      "firstname": "Grace",
+      "lastname": "Turner",
+      "position": "Major, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "paul.davis",
+      "email": "davis.p@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Lt. Col. Davis",
+      "firstname": "Paul",
+      "lastname": "Davis",
+      "position": "Lieutenant Colonel, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "frank.adams",
+      "email": "adams.f@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "SMSgt. Adams",
+      "firstname": "Frank",
+      "lastname": "Adams",
+      "position": "Senior Master Sergeant, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
+    },
+    {
+      "username": "olivia.brooks",
+      "email": "brooks.o@usaf-demo.gov",
+      "password": "SecurePassword123!",
+      "nickname": "Col. Brooks",
+      "firstname": "Olivia",
+      "lastname": "Brooks",
+      "position": "Colonel, USAF",
+      "isSystemAdmin": false,
+      "teams": ["usaf-team"]
     }
   ],
   "teams": {
-    "team1": {
-      "name": "team1",
-      "displayName": "My First Team",
-      "description": "Team description",
+    "usaf-team": {
+      "name": "usaf-team",
+      "displayName": "USAF Command",
+      "description": "United States Air Force Command and Operations",
       "type": "O",
+      "channels": [
+        {
+          "name": "official-announcements",
+          "displayName": "Official Announcements",
+          "purpose": "Important announcements from Command",
+          "header": "📢 Official Command announcements",
+          "type": "O",
+          "category": "Command",
+          "members": ["admin.user", "charles.armstrong", "maria.rodriguez", "john.smith", "paul.davis", "olivia.brooks"]
+        },
+        {
+          "name": "strategic-planning",
+          "displayName": "Strategic Planning",
+          "purpose": "Long-term planning and strategy discussions",
+          "type": "P",
+          "category": "Command",
+          "members": ["admin.user", "charles.armstrong", "maria.rodriguez", "john.smith", "paul.davis", "olivia.brooks"]
+        },
+        {
+          "name": "command-weather-alerts",
+          "displayName": "Command Weather Alerts",
+          "purpose": "Critical weather information affecting operations",
+          "type": "O",
+          "category": "Command",
+          "members": ["admin.user", "charles.armstrong", "maria.rodriguez", "john.smith", "paul.davis", "olivia.brooks"],
+          "commands": [
+            "/weather --location \"Washington DC\" --subscribe --update-frequency 120m",
+            "/weather --location \"Andrews AFB\" --subscribe --update-frequency 120m"
+          ]
+        },
+        {
+          "name": "command-flight-updates",
+          "displayName": "Command Flight Updates",
+          "purpose": "Critical flight information for command staff",
+          "type": "O",
+          "category": "Command",
+          "members": ["admin.user", "charles.armstrong", "maria.rodriguez", "john.smith", "paul.davis"],
+          "commands": [
+            "/flights subscribe --airport KDCA --frequency 3600",
+            "/flights subscribe --airport KADW --frequency 3600"
+          ]
+        },
+        {
+          "name": "mission-planning",
+          "displayName": "Mission Planning",
+          "purpose": "Planning and coordination of flight missions",
+          "type": "O",
+          "category": "Operations",
+          "members": ["admin.user", "charles.armstrong", "maria.rodriguez", "james.thompson", "samira.patel", "robert.williams", "harper.wilson"]
+        },
+        {
+          "name": "flight-schedules",
+          "displayName": "Flight Schedules",
+          "purpose": "Daily and weekly flight schedules",
+          "type": "O",
+          "category": "Operations",
+          "members": ["admin.user", "charles.armstrong", "maria.rodriguez", "james.thompson", "samira.patel", "robert.williams", "harper.wilson"]
+        },
+        {
+          "name": "ops-weather",
+          "displayName": "Operations Weather",
+          "purpose": "Weather updates affecting flight operations",
+          "type": "O",
+          "category": "Operations",
+          "members": ["admin.user", "samira.patel", "harper.wilson"],
+          "commands": [
+            "/weather --location \"Nellis AFB\" --subscribe --update-frequency 120m",
+            "/weather --location \"Edwards AFB\" --subscribe --update-frequency 180m",
+            "/weather --location \"Lackland AFB\" --subscribe --update-frequency 240m"
+          ]
+        },
+        {
+          "name": "base-flight-tracker",
+          "displayName": "Base Flight Tracker",
+          "purpose": "Track flights for key USAF bases",
+          "type": "O",
+          "category": "Operations",
+          "members": ["admin.user", "charles.armstrong", "maria.rodriguez", "james.thompson", "samira.patel", "robert.williams", "harper.wilson"],
+          "commands": [
+            "/flights subscribe --airport KLSV --frequency 1800",
+            "/flights subscribe --airport KEDW --frequency 1800",
+            "/flights subscribe --airport KLUF --frequency 1800"
+          ]
+        },
+        {
+          "name": "training-schedule",
+          "displayName": "Training Schedule",
+          "purpose": "Upcoming training activities and schedules",
+          "type": "O",
+          "members": ["admin.user", "maria.rodriguez", "robert.williams", "frank.adams"]
+        },
+        {
+          "name": "pilot-training",
+          "displayName": "Pilot Training",
+          "purpose": "Pilot training coordination and resources",
+          "type": "O",
+          "members": ["admin.user", "maria.rodriguez", "robert.williams", "frank.adams"]
+        },
+        {
+          "name": "training-weather",
+          "displayName": "Training Weather Updates",
+          "purpose": "Weather information affecting training activities",
+          "type": "O",
+          "members": ["admin.user", "maria.rodriguez", "robert.williams", "frank.adams"],
+          "commands": [
+            "/weather --location \"Vance AFB\" --subscribe --update-frequency 180m",
+            "/weather --location \"Columbus AFB\" --subscribe --update-frequency 240m"
+          ]
+        },
+        {
+          "name": "intel-briefings",
+          "displayName": "Intelligence Briefings",
+          "purpose": "Daily intelligence briefings and updates",
+          "type": "P",
+          "members": ["admin.user", "james.thompson", "jorge.martinez", "barbara.washington", "grace.turner"]
+        },
+        {
+          "name": "threat-assessment",
+          "displayName": "Threat Assessment",
+          "purpose": "Analysis of potential threats",
+          "type": "P",
+          "members": ["admin.user", "james.thompson", "barbara.washington", "grace.turner"]
+        },
+        {
+          "name": "intel-weather-monitoring",
+          "displayName": "Weather Intelligence",
+          "purpose": "Weather patterns affecting intelligence operations",
+          "type": "P",
+          "members": ["admin.user", "james.thompson", "jorge.martinez", "grace.turner"],
+          "commands": [
+            "/weather --location Moscow --subscribe --update-frequency 240m",
+            "/weather --location Beijing --subscribe --update-frequency 300m"
+          ]
+        },
+        {
+          "name": "supply-chain",
+          "displayName": "Supply Chain",
+          "purpose": "Managing supply chain and inventory",
+          "type": "O",
+          "members": ["admin.user", "lisa.johnson", "tyrone.jackson", "paul.davis"]
+        },
+        {
+          "name": "transportation",
+          "displayName": "Transportation",
+          "purpose": "Coordination of transportation resources",
+          "type": "O",
+          "members": ["admin.user", "lisa.johnson", "tyrone.jackson", "paul.davis"]
+        },
+        {
+          "name": "logistics-weather",
+          "displayName": "Logistics Weather Impacts",
+          "purpose": "Weather affecting supply routes and logistics",
+          "type": "O",
+          "members": ["admin.user", "lisa.johnson", "paul.davis"],
+          "commands": [
+            "/weather --location \"Dover AFB\" --subscribe --update-frequency 180m",
+            "/weather --location \"Travis AFB\" --subscribe --update-frequency 240m"
+          ]
+        },
+        {
+          "name": "aircraft-maintenance",
+          "displayName": "Aircraft Maintenance",
+          "purpose": "Aircraft maintenance schedules and issues",
+          "type": "O",
+          "members": ["admin.user", "david.nguyen", "kevin.chen", "jorge.martinez", "frank.adams"]
+        },
+        {
+          "name": "engineering-projects",
+          "displayName": "Engineering Projects",
+          "purpose": "Ongoing engineering projects and developments",
+          "type": "O",
+          "members": ["admin.user", "david.nguyen", "kevin.chen", "jorge.martinez", "frank.adams"]
+        },
+        {
+          "name": "engineering-weather",
+          "displayName": "Engineering Weather Concerns",
+          "purpose": "Weather conditions affecting maintenance operations",
+          "type": "O",
+          "members": ["admin.user", "david.nguyen", "kevin.chen", "frank.adams"],
+          "commands": [
+            "/weather --location \"Tinker AFB\" --subscribe --update-frequency 180m",
+            "/weather --location \"Hill AFB\" --subscribe --update-frequency 240m"
+          ]
+        },
+        {
+          "name": "medical-staffing",
+          "displayName": "Medical Staffing",
+          "purpose": "Staffing schedules and coverage",
+          "type": "O",
+          "members": ["admin.user", "lisa.johnson", "tyrone.jackson", "barbara.washington", "olivia.brooks"]
+        },
+        {
+          "name": "patient-care",
+          "displayName": "Patient Care",
+          "purpose": "Patient care coordination",
+          "type": "P",
+          "members": ["admin.user", "lisa.johnson", "tyrone.jackson", "barbara.washington", "olivia.brooks"]
+        },
+        {
+          "name": "medical-evac-weather",
+          "displayName": "Medical Evac Weather",
+          "purpose": "Weather affecting medical evacuations",
+          "type": "O",
+          "members": ["admin.user", "barbara.washington", "olivia.brooks"],
+          "commands": [
+            "/weather --location \"Walter Reed\" --subscribe --update-frequency 180m",
+            "/weather --location \"San Antonio\" --subscribe --update-frequency 240m"
+          ]
+        },
+        {
+          "name": "security-operations",
+          "displayName": "Security Operations",
+          "purpose": "Daily security operations and patrols",
+          "type": "O",
+          "members": ["admin.user", "david.nguyen", "ana.perez", "john.smith"]
+        },
+        {
+          "name": "threat-reports",
+          "displayName": "Threat Reports",
+          "purpose": "Security incidents and threat reports",
+          "type": "P",
+          "members": ["admin.user", "david.nguyen", "ana.perez", "john.smith"]
+        },
+        {
+          "name": "security-weather",
+          "displayName": "Security Weather Updates",
+          "purpose": "Weather affecting security operations",
+          "type": "O",
+          "members": ["admin.user", "david.nguyen", "ana.perez", "john.smith"],
+          "commands": [
+            "/weather --location \"Pentagon\" --subscribe --update-frequency 180m",
+            "/weather --location \"Cheyenne Mountain\" --subscribe --update-frequency 240m"
+          ]
+        },
+        {
+          "name": "network-operations",
+          "displayName": "Network Operations",
+          "purpose": "Network status and operations",
+          "type": "O",
+          "members": ["admin.user", "kevin.chen", "ana.perez", "emma.miller", "grace.turner"]
+        },
+        {
+          "name": "comms-equipment",
+          "displayName": "Communications Equipment",
+          "purpose": "Equipment maintenance and upgrades",
+          "type": "O",
+          "members": ["admin.user", "kevin.chen", "ana.perez", "emma.miller", "grace.turner"]
+        },
+        {
+          "name": "comms-weather-impacts",
+          "displayName": "Communications Weather Impacts",
+          "purpose": "Weather affecting communications systems",
+          "type": "O",
+          "members": ["admin.user", "emma.miller", "grace.turner"],
+          "commands": [
+            "/weather --location \"Offutt AFB\" --subscribe --update-frequency 180m",
+            "/weather --location \"Fort Meade\" --subscribe --update-frequency 240m"
+          ]
+        },
+        {
+          "name": "forecasting",
+          "displayName": "Weather Forecasting",
+          "purpose": "Weather forecasting and analysis",
+          "type": "O",
+          "members": ["admin.user", "samira.patel", "emma.miller", "harper.wilson"]
+        },
+        {
+          "name": "weather-alerts",
+          "displayName": "Weather Alerts",
+          "purpose": "Critical weather alerts",
+          "type": "O",
+          "members": ["admin.user", "samira.patel", "emma.miller", "harper.wilson"],
+          "commands": [
+            "/weather --location \"Scott AFB\" --subscribe --update-frequency 120m",
+            "/weather --location \"Peterson SFB\" --subscribe --update-frequency 180m",
+            "/weather --location \"Barksdale AFB\" --subscribe --update-frequency 240m",
+            "/weather --location \"Ramstein AB\" --subscribe --update-frequency 300m"
+          ]
+        },
+        {
+          "name": "weather-research",
+          "displayName": "Weather Research",
+          "purpose": "Advanced weather research and analysis",
+          "type": "O",
+          "members": ["admin.user", "samira.patel", "emma.miller", "harper.wilson"]
+        }
+      ],
       "webhooks": [
         {
           "displayName": "weather",
           "description": "Weather responses",
-          "channelName": "off-topic",
-          "username": "professor",
+          "channelName": "weather-alerts",
+          "username": "weather-service",
           "envVariable": "WEATHER_MATTERMOST_WEBHOOK_URL",
+          "containerName": "weather-app"
+        },
+        {
+          "displayName": "command-weather",
+          "description": "Command weather alerts",
+          "channelName": "command-weather-alerts",
+          "username": "weather-service",
+          "envVariable": "COMMAND_WEATHER_WEBHOOK_URL",
+          "containerName": "weather-app"
+        },
+        {
+          "displayName": "ops-weather",
+          "description": "Operations weather alerts",
+          "channelName": "ops-weather",
+          "username": "weather-service",
+          "envVariable": "OPS_WEATHER_WEBHOOK_URL",
           "containerName": "weather-app"
         },
         {
           "displayName": "flight-app",
           "description": "Flight departures",
-          "channelName": "off-topic",
-          "username": "professor",
+          "channelName": "base-flight-tracker",
+          "username": "flight-service",
           "envVariable": "FLIGHTS_MATTERMOST_WEBHOOK_URL",
+          "containerName": "flightaware-app"
+        },
+        {
+          "displayName": "command-flights",
+          "description": "Command flight updates",
+          "channelName": "command-flight-updates",
+          "username": "flight-service",
+          "envVariable": "COMMAND_FLIGHTS_WEBHOOK_URL",
           "containerName": "flightaware-app"
         }
       ],

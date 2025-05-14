@@ -3,8 +3,12 @@ package mattermost
 
 import (
 	// Standard library imports
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -147,18 +151,28 @@ func (c *Client) Login() error {
 //
 // Returns nil if the server starts successfully, or an error if the timeout is reached.
 func (c *Client) WaitForStart() error {
-	c.logf("Waiting %d seconds for the server to start\n", MaxWaitSeconds)
+	// Progress indicators
+	progressChars := []string{"-", "\\", "|", "/"}
 
 	for i := 0; i < MaxWaitSeconds; i++ {
+		// Show a spinning progress indicator
+		progressChar := progressChars[i%len(progressChars)]
+		fmt.Printf("\r[%s] Checking Mattermost API status... (%d/%d seconds)",
+			progressChar, i+1, MaxWaitSeconds)
+
+		// Send a ping request
 		_, resp, err := c.API.GetPing(context.Background())
 		if err == nil && resp != nil && resp.StatusCode == 200 {
-			c.log("Server started")
+			// Clear the progress line
+			fmt.Print("\r                                                           \r")
 			return nil
 		}
-		c.logf(".")
+
 		time.Sleep(1 * time.Second)
 	}
 
+	// Clear the progress line
+	fmt.Print("\r                                                           \r")
 	return fmt.Errorf("server didn't start in %d seconds", MaxWaitSeconds)
 }
 
@@ -694,7 +708,7 @@ func (c *Client) GetTeamAndChannel(channelName string) (teamID, channelID string
 	return teamID, channelID, nil
 }
 
-// setupTeamResources sets up both webhooks and slash commands for a specific team
+// setupTeamResources sets up channels, webhooks and slash commands for a specific team
 // This is called immediately after creating or finding a team to ensure resources are set up
 func (c *Client) setupTeamResources(team *model.Team, teamConfig TeamConfig) error {
 	if team == nil {
@@ -703,6 +717,11 @@ func (c *Client) setupTeamResources(team *model.Team, teamConfig TeamConfig) err
 
 	teamID := team.Id
 	c.logf("Setting up resources for team '%s' (ID: %s)\n", team.Name, teamID)
+
+	// Set up channels for this team first (webhooks need channels to exist)
+	if err := c.setupTeamChannels(team, teamConfig); err != nil {
+		return fmt.Errorf("failed to set up channels for team '%s': %w", team.Name, err)
+	}
 
 	// Set up webhooks for this team
 	if err := c.setupTeamWebhooks(team, teamConfig); err != nil {
@@ -780,6 +799,405 @@ func (c *Client) setupTeamSlashCommands(team *model.Team, teamConfig TeamConfig)
 	return nil
 }
 
+// createOrGetChannel creates a new channel or returns an existing one
+func (c *Client) createOrGetChannel(teamID, name, displayName, purpose, header, channelType string) (*model.Channel, error) {
+	// Get existing channels
+	channels, resp, err := c.API.GetPublicChannelsForTeam(context.Background(), teamID, 0, 1000, "")
+	if err != nil {
+		return nil, handleAPIError("failed to get public channels", err, resp)
+	}
+
+	// Also check private channels if we're looking for one
+	if channelType == "P" {
+		privateChannels, _, privateErr := c.API.GetPrivateChannelsForTeam(context.Background(), teamID, 0, 1000, "")
+		if privateErr == nil {
+			channels = append(channels, privateChannels...)
+		} else {
+			c.logf("❌ Warning: Failed to get private channels: %v\n", privateErr)
+		}
+	}
+
+	// Check if channel already exists
+	for _, channel := range channels {
+		if channel.Name == name {
+			c.logf("Channel '%s' already exists in team\n", name)
+			return channel, nil
+		}
+	}
+
+	// Default to Open if not specified
+	if channelType == "" {
+		channelType = "O"
+	}
+
+	// Create the channel
+	c.logf("Creating '%s' channel...\n", name)
+
+	newChannel := &model.Channel{
+		TeamId:      teamID,
+		Name:        name,
+		DisplayName: displayName,
+		Purpose:     purpose,
+		Header:      header,
+		Type:        model.ChannelType(channelType),
+	}
+
+	createdChannel, createResp, err := c.API.CreateChannel(context.Background(), newChannel)
+	if err != nil {
+		return nil, handleAPIError("failed to create channel", err, createResp)
+	}
+
+	c.logf("✅ Successfully created channel '%s' (ID: %s)\n", createdChannel.Name, createdChannel.Id)
+	return createdChannel, nil
+}
+
+// addUserToChannel adds a user to a channel and handles common error cases
+func (c *Client) addUserToChannel(userID, channelID string) error {
+	_, resp, err := c.API.AddChannelMember(context.Background(), channelID, userID)
+	if err != nil {
+		// Check if the error is because the user is already a member
+		if resp != nil && resp.StatusCode == 400 {
+			// Look for the "already a member" message
+			c.logf("User is already a member of the channel\n")
+			return nil
+		}
+		return fmt.Errorf("failed to add user to channel: %w", err)
+	}
+
+	c.logf("✅ Added user to channel successfully\n")
+	return nil
+}
+
+// categorizeChannelAPI implements channel categorization using the Playbooks API
+func (c *Client) categorizeChannelAPI(channelID string, categoryName string) error {
+	if channelID == "" || categoryName == "" {
+		return fmt.Errorf("channel ID and category name are required")
+	}
+
+	c.logf("Categorizing channel %s in category '%s' using Playbooks API...\n", channelID, categoryName)
+
+	// Construct the URL for the categorize channel API
+	url := fmt.Sprintf("%s/plugins/playbooks/api/v0/actions/channels/%s",
+		c.ServerURL, channelID)
+
+	// Create the payload
+	type Category struct {
+		CategoryName string `json:"category_name"`
+	}
+
+	type CategorizePayload struct {
+		Enabled     bool     `json:"enabled"`
+		Payload     Category `json:"payload"`
+		ChannelID   string   `json:"channel_id"`
+		ActionType  string   `json:"action_type"`
+		TriggerType string   `json:"trigger_type"`
+	}
+
+	payload := CategorizePayload{
+		Enabled: true,
+		Payload: Category{
+			CategoryName: categoryName,
+		},
+		ChannelID:   channelID,
+		ActionType:  "categorize_channel",
+		TriggerType: "new_member_joins",
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal categorize payload: %w", err)
+	}
+
+	// Create the request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create categorize request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.API.AuthToken)
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send categorize request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("categorize request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	c.logf("✅ Successfully categorized channel in '%s' using Playbooks API\n", categoryName)
+	return nil
+}
+
+// categorizeChannel adds a channel to a category
+func (c *Client) categorizeChannel(channelID string, categoryName string) error {
+	if channelID == "" || categoryName == "" {
+		return fmt.Errorf("channel ID and category name are required")
+	}
+
+	return c.categorizeChannelAPI(channelID, categoryName)
+
+}
+
+// setupTeamChannels creates channels for a specific team and adds members
+func (c *Client) setupTeamChannels(team *model.Team, teamConfig TeamConfig) error {
+	teamID := team.Id
+	c.logf("Setting up channels for team '%s' (ID: %s)\n", team.Name, teamID)
+
+	// Skip if no channels are configured
+	if len(teamConfig.Channels) == 0 {
+		c.logf("No channels configured for team '%s'\n", team.Name)
+		return nil
+	}
+
+	// Create each channel first (without adding members)
+	for _, channelConfig := range teamConfig.Channels {
+		// Create or get the channel
+		channel, err := c.createOrGetChannel(
+			teamID,
+			channelConfig.Name,
+			channelConfig.DisplayName,
+			channelConfig.Purpose,
+			channelConfig.Header,
+			channelConfig.Type,
+		)
+		if err != nil {
+			c.logf("❌ Failed to create channel '%s': %v\n", channelConfig.Name, err)
+			continue
+		}
+
+		// If a category is specified, categorize the channel before adding members
+		if channelConfig.Category != "" {
+			if err := c.categorizeChannel(channel.Id, channelConfig.Category); err != nil {
+				c.logf("⚠️ Warning: Failed to categorize channel '%s' in category '%s': %v\n",
+					channelConfig.Name, channelConfig.Category, err)
+				// Don't return error here, continue with other operations
+			}
+		}
+	}
+
+	// We'll add members to channels after users have been added to the team
+	// This will be done in a separate function below
+
+	return nil
+}
+
+// AddChannelMembers adds members to channels after teams and users are fully set up
+func (c *Client) AddChannelMembers() error {
+	// Only proceed if we have a config
+	if c.Config == nil || len(c.Config.Teams) == 0 {
+		return nil
+	}
+
+	c.log("Adding members to channels...")
+
+	// Get all teams
+	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
+	if err != nil {
+		return handleAPIError("failed to get teams", err, resp)
+	}
+
+	// Create a map of team names to team IDs
+	teamMap := make(map[string]*model.Team)
+	for _, team := range teams {
+		teamMap[team.Name] = team
+	}
+
+	// Get all users
+	users, resp, err := c.API.GetUsers(context.Background(), 0, 1000, "")
+	if err != nil {
+		return handleAPIError("failed to get users", err, resp)
+	}
+
+	// Create a map of usernames to user IDs
+	userMap := make(map[string]*model.User)
+	for _, user := range users {
+		userMap[user.Username] = user
+	}
+
+	// For each team in the config
+	for teamName, teamConfig := range c.Config.Teams {
+		team, exists := teamMap[teamName]
+		if !exists {
+			c.logf("❌ Team '%s' not found, can't add channel members\n", teamName)
+			continue
+		}
+
+		// For each channel in the team
+		for _, channelConfig := range teamConfig.Channels {
+			// Skip if no members are specified
+			if len(channelConfig.Members) == 0 {
+				continue
+			}
+
+			// Get the channel
+			channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+			if err != nil {
+				c.logf("❌ Failed to get channels for team '%s': %v\n", teamName, err)
+				continue
+			}
+
+			// If it's a private channel, get those too
+			if channelConfig.Type == "P" {
+				privateChannels, _, err := c.API.GetPrivateChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+				if err == nil {
+					channels = append(channels, privateChannels...)
+				}
+			}
+
+			// Find the channel by name
+			var channel *model.Channel
+			for _, ch := range channels {
+				if ch.Name == channelConfig.Name {
+					channel = ch
+					break
+				}
+			}
+
+			if channel == nil {
+				c.logf("❌ Channel '%s' not found in team '%s'\n", channelConfig.Name, teamName)
+				continue
+			}
+
+			// Add members to the channel
+			c.logf("Adding %d members to channel '%s'\n", len(channelConfig.Members), channelConfig.Name)
+
+			for _, username := range channelConfig.Members {
+				user, exists := userMap[username]
+				if !exists {
+					c.logf("❌ User '%s' not found, can't add to channel '%s'\n", username, channelConfig.Name)
+					continue
+				}
+
+				if err := c.addUserToChannel(user.Id, channel.Id); err != nil {
+					c.logf("❌ Failed to add user '%s' to channel '%s': %v\n", username, channelConfig.Name, err)
+				} else {
+					c.logf("✅ Added user '%s' to channel '%s'\n", username, channelConfig.Name)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// SetupChannelCommands executes specified slash commands in channels sequentially
+// If any command fails, the entire setup process will abort
+func (c *Client) SetupChannelCommands() error {
+	// Only proceed if we have a config
+	if c.Config == nil || len(c.Config.Teams) == 0 {
+		return nil
+	}
+
+	c.log("Setting up channel commands...")
+
+	// Get all teams
+	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
+	if err != nil {
+		return handleAPIError("failed to get teams", err, resp)
+	}
+
+	// Create a map of team names to team objects
+	teamMap := make(map[string]*model.Team)
+	for _, team := range teams {
+		teamMap[team.Name] = team
+	}
+
+	// For each team in the config
+	for teamName, teamConfig := range c.Config.Teams {
+		team, exists := teamMap[teamName]
+		if !exists {
+			c.logf("❌ Team '%s' not found, can't execute commands\n", teamName)
+			return fmt.Errorf("team '%s' not found", teamName)
+		}
+
+		// Get all channels for this team
+		channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+		if err != nil {
+			c.logf("❌ Failed to get channels for team '%s': %v\n", teamName, err)
+			return fmt.Errorf("failed to get channels for team '%s': %w", teamName, err)
+		}
+
+		// Also get private channels
+		privateChannels, _, err := c.API.GetPrivateChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+		if err == nil {
+			channels = append(channels, privateChannels...)
+		}
+
+		// Create a map of channel names to channel objects
+		channelMap := make(map[string]*model.Channel)
+		for _, ch := range channels {
+			channelMap[ch.Name] = ch
+		}
+
+		// For each channel with commands
+		for _, channelConfig := range teamConfig.Channels {
+			// Skip if no commands are configured
+			if len(channelConfig.Commands) == 0 {
+				continue
+			}
+
+			// Find the channel
+			channel, exists := channelMap[channelConfig.Name]
+			if !exists {
+				c.logf("❌ Channel '%s' not found in team '%s'\n", channelConfig.Name, teamName)
+				return fmt.Errorf("channel '%s' not found in team '%s'", channelConfig.Name, teamName)
+			}
+
+			c.logf("Executing %d commands for channel '%s' (sequentially)...\n",
+				len(channelConfig.Commands), channelConfig.Name)
+
+			// Execute each command in order, waiting for each to complete
+			for i, command := range channelConfig.Commands {
+				// Check if the command has been loaded and trimmed
+				commandText := strings.TrimSpace(command)
+
+				if !strings.HasPrefix(commandText, "/") {
+					c.logf("❌ Invalid command '%s' for channel '%s' - must start with /\n",
+						commandText, channelConfig.Name)
+					return fmt.Errorf("invalid command '%s' - must start with /", commandText)
+				}
+
+				// Remove the leading slash for the API
+
+				c.logf("Executing command %d/%d in channel '%s': %s\n",
+					i+1, len(channelConfig.Commands), channelConfig.Name, commandText)
+
+				// Execute the command using the commands/execute API
+				_, resp, err := c.API.ExecuteCommand(context.Background(), channel.Id, commandText)
+
+				// Check for any errors or non-200 response
+				if err != nil {
+					c.logf("❌ Failed to execute command '%s': %v\n", commandText, err)
+					return fmt.Errorf("failed to execute command '%s': %w", commandText, err)
+				}
+
+				if resp.StatusCode != 200 {
+					c.logf("❌ Command '%s' returned non-200 status code: %d\n",
+						commandText, resp.StatusCode)
+					return fmt.Errorf("command '%s' returned status code %d",
+						commandText, resp.StatusCode)
+				}
+
+				c.logf("✅ Successfully executed command %d/%d: '%s' in channel '%s'\n",
+					i+1, len(channelConfig.Commands), commandText, channelConfig.Name)
+
+				// Add a small delay between commands to ensure proper ordering
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+	}
+
+	return nil
+}
+
 // SetupTestData sets up test data in Mattermost based on configuration
 func (c *Client) SetupTestData() error {
 	c.log("===========================================")
@@ -804,6 +1222,21 @@ func (c *Client) SetupTestData() error {
 	// The CreateTeam function now handles webhook and slash command setup
 	if err := c.CreateTeam(); err != nil {
 		return err
+	}
+
+	// Now that teams are created and users added to teams,
+	// we can add users to channels
+	if err := c.AddChannelMembers(); err != nil {
+		c.logf("❌ Warning: Error adding channel members: %v\n", err)
+		// Don't return error here, continue with setup
+	}
+
+	// Now that channels are fully set up with members,
+	// we can execute the channel commands
+	if err := c.SetupChannelCommands(); err != nil {
+		c.logf("❌ Error executing channel commands: %v\n", err)
+		// Return error here to abort the setup process
+		return fmt.Errorf("failed to execute channel commands: %w", err)
 	}
 
 	return nil

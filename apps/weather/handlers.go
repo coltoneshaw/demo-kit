@@ -139,7 +139,7 @@ func handleIncomingWebhook(w http.ResponseWriter, r *http.Request, apiKey string
 		sendLimitsResponse(w, channelID, subscriptionManager)
 		return
 	} else if text == "list" {
-		sendListResponse(w, channelID, userID, subscriptionManager)
+		handleListCommand(w, channelID, subscriptionManager)
 		return
 	}
 
@@ -298,13 +298,13 @@ func sendLimitsResponse(w http.ResponseWriter, channelID string, subscriptionMan
 	json.NewEncoder(w).Encode(response)
 }
 
-// sendListResponse sends the list of user's subscriptions as an ephemeral message
-func sendListResponse(w http.ResponseWriter, channelID string, userID string, subscriptionManager *SubscriptionManager) {
-	// List subscriptions for the user
-	subs := subscriptionManager.GetSubscriptionsForUser(userID)
+// sendListResponse sends the list of all channel subscriptions as an in-channel message
+func handleListCommand(w http.ResponseWriter, channelID string, subscriptionManager *SubscriptionManager) {
+	// List subscriptions for the channel instead of just the user
+	subs := subscriptionManager.GetSubscriptionsForChannel(channelID)
 	if len(subs) == 0 {
 		response := MattermostResponse{
-			Text:         "You don't have any active weather subscriptions.",
+			Text:         "No active weather subscriptions found in this channel.",
 			ResponseType: "ephemeral",
 			ChannelID:    channelID,
 		}
@@ -312,18 +312,22 @@ func sendListResponse(w http.ResponseWriter, channelID string, userID string, su
 		return
 	}
 
-	// Build list of subscriptions
+	// Build list of subscriptions in markdown table format
 	var subList strings.Builder
-	subList.WriteString("Your active weather subscriptions:\n\n")
+	subList.WriteString("**Active Weather Subscriptions in this Channel:**\n\n")
+	subList.WriteString("| ID | Location | Frequency | Last Updated |\n")
+	subList.WriteString("|---|---------|-----------|-------------|\n")
+
 	for _, sub := range subs {
-		subList.WriteString(fmt.Sprintf("ID: `%s`\nLocation: %s\nFrequency: %d ms\n\n",
-			sub.ID, sub.Location, sub.UpdateFrequency))
+		subList.WriteString(fmt.Sprintf("| `%s` | %s | %d ms | %s |\n",
+			sub.ID, sub.Location, sub.UpdateFrequency, sub.LastUpdated.Format(time.RFC1123)))
 	}
-	subList.WriteString("To unsubscribe, use: `/weather --unsubscribe --id SUBSCRIPTION_ID`")
+
+	subList.WriteString("\nTo unsubscribe, use: `/weather --unsubscribe --id SUBSCRIPTION_ID`")
 
 	response := MattermostResponse{
 		Text:         subList.String(),
-		ResponseType: "ephemeral",
+		ResponseType: "in_channel",
 		ChannelID:    channelID,
 	}
 	json.NewEncoder(w).Encode(response)
@@ -343,13 +347,18 @@ func handleUnsubscribe(w http.ResponseWriter, channelID string, subscriptionID s
 	}
 
 	// Remove the subscription
-	if subscriptionManager.RemoveSubscription(subscriptionID) {
-		response := MattermostResponse{
-			Text:         fmt.Sprintf("Successfully unsubscribed from weather updates for subscription ID: %s", subscriptionID),
-			ResponseType: "ephemeral",
-			ChannelID:    channelID,
+	if sub, exists := subscriptionManager.GetSubscription(subscriptionID); exists {
+		// Get subscription details before removing it
+		location := sub.Location
+		
+		if subscriptionManager.RemoveSubscription(subscriptionID) {
+			response := MattermostResponse{
+				Text:         fmt.Sprintf("✅ Unsubscribed from weather updates for **%s** (ID: `%s`).", location, subscriptionID),
+				ResponseType: "in_channel",
+				ChannelID:    channelID,
+			}
+			json.NewEncoder(w).Encode(response)
 		}
-		json.NewEncoder(w).Encode(response)
 	} else {
 		response := MattermostResponse{
 			Text:         fmt.Sprintf("No subscription found with ID: %s", subscriptionID),
@@ -411,15 +420,14 @@ func handleSubscribe(w http.ResponseWriter, channelID string, userID string, loc
 	// Start a goroutine to handle the subscription
 	go startSubscription(subscription, apiKey, subscriptionManager)
 
-	// Send confirmation
+	// Send confirmation to the channel so everyone can see the subscription
 	response := MattermostResponse{
-		Text:         fmt.Sprintf("Successfully subscribed to weather updates for %s every %d ms. Subscription ID: `%s`", location, updateFrequency, subID),
-		ResponseType: "ephemeral",
+		Text:         fmt.Sprintf("✅ Subscribed to weather updates for **%s**. Updates will be sent every %d ms (ID: `%s`).", location, updateFrequency, subID),
+		ResponseType: "in_channel",
 		ChannelID:    channelID,
 	}
 	json.NewEncoder(w).Encode(response)
 }
-
 
 // handleRegularWeatherRequest handles a regular weather request
 func handleRegularWeatherRequest(w http.ResponseWriter, channelID string, location string, apiKey string) {

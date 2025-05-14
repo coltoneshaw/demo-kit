@@ -15,17 +15,29 @@ func startSubscription(sub *Subscription, apiKey string, subscriptionManager *Su
 	// Get initial weather data
 	weatherData, err := getWeatherData(sub.Location, apiKey)
 	if err != nil {
+		// Log the error
 		log.Printf("Error fetching initial weather data for subscription %s: %v", sub.ID, err)
-		return
+		
+		// Send error message to the channel
+		errorMsg := fmt.Sprintf("⚠️ Could not fetch weather data for subscription to **%s** (ID: `%s`): %v", 
+			sub.Location, sub.ID, err)
+		sendMattermostMessage(sub.ChannelID, errorMsg)
+		
+		// Don't return - continue with subscription setup even if initial data fetch fails
+		// This allows subscriptions to recover if the API issue is temporary
+	} else {
+		// Only send the initial update if we successfully got data
+		weatherText := formatWeatherResponse(weatherData)
+		sendMattermostMessage(sub.ChannelID, weatherText)
 	}
-
-	// Send initial weather update
-	weatherText := formatWeatherResponse(weatherData)
-	sendMattermostMessage(sub.ChannelID, weatherText)
 
 	// Create a ticker for periodic updates (convert milliseconds to duration)
 	ticker := time.NewTicker(time.Duration(sub.UpdateFrequency) * time.Millisecond)
 	defer ticker.Stop()
+	
+	// Track consecutive failures
+	consecutiveFailures := 0
+	maxConsecutiveFailures := 5
 
 	for {
 		select {
@@ -33,8 +45,32 @@ func startSubscription(sub *Subscription, apiKey string, subscriptionManager *Su
 			// Get updated weather data
 			weatherData, err := getWeatherData(sub.Location, apiKey)
 			if err != nil {
-				log.Printf("Error fetching weather data for subscription %s: %v", sub.ID, err)
+				consecutiveFailures++
+				log.Printf("Error fetching weather data for subscription %s: %v (Failure #%d)", 
+					sub.ID, err, consecutiveFailures)
+				
+				// Only notify about errors occasionally to avoid spam
+				if consecutiveFailures == 1 || consecutiveFailures == maxConsecutiveFailures {
+					errorMsg := fmt.Sprintf("⚠️ Error updating weather for **%s**: %v", sub.Location, err)
+					sendMattermostMessage(sub.ChannelID, errorMsg)
+				}
+				
+				// If we've had too many consecutive failures, increase the update interval temporarily
+				if consecutiveFailures >= maxConsecutiveFailures {
+					log.Printf("Too many consecutive failures for subscription %s, backing off", sub.ID)
+					// Double the ticker interval temporarily
+					ticker.Reset(time.Duration(sub.UpdateFrequency*2) * time.Millisecond)
+				}
+				
 				continue
+			}
+			
+			// Reset failure counter on success
+			if consecutiveFailures > 0 {
+				log.Printf("Successfully recovered subscription %s after %d failures", sub.ID, consecutiveFailures)
+				consecutiveFailures = 0
+				// Reset ticker to normal interval
+				ticker.Reset(time.Duration(sub.UpdateFrequency) * time.Millisecond)
 			}
 
 			// Send weather update

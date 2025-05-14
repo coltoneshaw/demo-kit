@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Default configuration file paths
@@ -97,6 +98,33 @@ type SlashCommandConfig struct {
 	AutoCompleteHint string `json:"autoCompleteHint,omitempty"`
 }
 
+// ChannelConfig represents the configuration for a Mattermost channel
+type ChannelConfig struct {
+	// Name is the channel name (no spaces, lowercase)
+	Name string `json:"name"`
+
+	// DisplayName is the human-readable channel name
+	DisplayName string `json:"displayName"`
+
+	// Purpose is an optional channel purpose description
+	Purpose string `json:"purpose,omitempty"`
+
+	// Header is an optional channel header text
+	Header string `json:"header,omitempty"`
+
+	// Type is the channel type: "O" for public, "P" for private
+	Type string `json:"type,omitempty"`
+
+	// Members is a list of usernames to add to this channel
+	Members []string `json:"members,omitempty"`
+
+	// Commands is a list of slash commands to execute in this channel
+	Commands []string `json:"commands,omitempty"`
+
+	// Category is an optional category to add the channel to
+	Category string `json:"category,omitempty"`
+}
+
 // TeamConfig represents the configuration for a Mattermost team
 type TeamConfig struct {
 	// Name is the team name
@@ -110,6 +138,9 @@ type TeamConfig struct {
 
 	// Type can be "O" (open), "I" (invite only), or other valid Mattermost team types
 	Type string `json:"type,omitempty"`
+
+	// Channels defines the channels to create for this team
+	Channels []ChannelConfig `json:"channels,omitempty"`
 
 	// Webhooks defines the webhooks to create for this team
 	Webhooks []WebhookConfig `json:"webhooks,omitempty"`
@@ -147,16 +178,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Log any slash command autocomplete hints found in the config
-	for _, team := range config.Teams {
-		for _, cmd := range team.SlashCommands {
-			if cmd.AutoComplete && cmd.AutoCompleteHint != "" {
-				fmt.Printf("Loaded autocomplete hint for command /%s: %s\n", 
-					cmd.Trigger, cmd.AutoCompleteHint)
-			}
-		}
-	}
-
 	return &config, nil
 }
 
@@ -187,6 +208,78 @@ func validateConfig(config *Config) error {
 		}
 		if team.DisplayName == "" {
 			return fmt.Errorf("team '%s' is missing displayName", name)
+		}
+
+		// Validate channels
+		for i, channel := range team.Channels {
+			if channel.Name == "" {
+				return fmt.Errorf("channel at index %d for team '%s' is missing name", i, name)
+			}
+			if channel.DisplayName == "" {
+				return fmt.Errorf("channel '%s' for team '%s' is missing displayName", channel.Name, name)
+			}
+
+			// Validate channel type if provided
+			if channel.Type != "" && channel.Type != "O" && channel.Type != "P" {
+				return fmt.Errorf("channel '%s' for team '%s' has invalid type '%s', must be 'O' for public or 'P' for private",
+					channel.Name, name, channel.Type)
+			}
+
+			// Validate members exist in users
+			for _, member := range channel.Members {
+				userFound := false
+				for _, user := range config.Users {
+					if user.Username == member {
+						userFound = true
+						break
+					}
+				}
+
+				if !userFound {
+					// This is just a warning, not an error
+					fmt.Printf("Warning: Member '%s' in channel '%s' is not defined in users section\n",
+						member, channel.Name)
+				}
+			}
+
+			// Validate commands
+			for i, command := range channel.Commands {
+				if command == "" {
+					return fmt.Errorf("command at index %d for channel '%s' in team '%s' is empty",
+						i, channel.Name, name)
+				}
+
+				// Verify the command starts with a slash
+				if !strings.HasPrefix(command, "/") {
+					return fmt.Errorf("command '%s' for channel '%s' in team '%s' must start with /",
+						command, channel.Name, name)
+				}
+
+				// Extract the command name for validation
+				parts := strings.Fields(command)
+				if len(parts) == 0 {
+					return fmt.Errorf("command '%s' for channel '%s' in team '%s' is invalid",
+						command, channel.Name, name)
+				}
+
+				cmdName := strings.TrimPrefix(parts[0], "/")
+
+				// Validate command is one of the supported types
+				validType := false
+				supportedTypes := []string{"weather", "flights"}
+				for _, t := range supportedTypes {
+					if cmdName == t {
+						validType = true
+						break
+					}
+				}
+
+				if !validType {
+					// Just a warning, not an error
+					fmt.Printf("Warning: Command type '%s' for channel '%s' may not be supported\n",
+						cmdName, channel.Name)
+				}
+			}
 		}
 
 		// Validate webhooks

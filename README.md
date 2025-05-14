@@ -35,13 +35,46 @@ Example `config.json`:
       "name": "test",
       "displayName": "Test Team",
       "description": "Team for testing",
-      "type": "O"
+      "type": "O",
+      "channels": [
+        {
+          "name": "announcements",
+          "displayName": "Announcements",
+          "purpose": "Important team announcements",
+          "header": "📢 Official announcements channel",
+          "type": "O",
+          "members": ["sysadmin", "user-1"]
+        },
+        {
+          "name": "development",
+          "displayName": "Development",
+          "purpose": "Development discussions",
+          "type": "O",
+          "members": ["sysadmin", "user-1"]
+        },
+        {
+          "name": "private-notes",
+          "displayName": "Private Notes",
+          "purpose": "Admin-only private notes",
+          "type": "P",
+          "members": ["sysadmin"]
+        }
+      ]
     },
     "marketing": {
       "name": "marketing",
       "displayName": "Marketing",
       "description": "Marketing department team",
-      "type": "O"
+      "type": "O",
+      "channels": [
+        {
+          "name": "campaigns",
+          "displayName": "Campaigns",
+          "purpose": "Marketing campaign planning",
+          "type": "O",
+          "members": ["sysadmin"]
+        }
+      ]
     }
   }
 }
@@ -68,6 +101,18 @@ Each team in the `teams` map has the following properties:
 - `displayName` (required): The human-readable team name
 - `description` (optional): A description of the team
 - `type` (optional): The team type - "O" for open (default), "I" for invite only
+- `channels` (optional): An array of channel configurations for this team (see below)
+
+#### Channels
+
+Each channel in a team's `channels` array has the following properties:
+
+- `name` (required): The channel name (URL-friendly identifier, lowercase with no spaces)
+- `displayName` (required): The human-readable channel name
+- `purpose` (optional): A brief description of the channel's purpose
+- `header` (optional): Text that appears in the channel header
+- `type` (optional): The channel type - "O" for public (default), "P" for private
+- `members` (optional): An array of usernames to add to this channel
 
 ## Usage
 

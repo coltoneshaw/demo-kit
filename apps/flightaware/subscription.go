@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,13 +12,13 @@ import (
 
 // FlightSubscription represents a subscription to flight departures
 type FlightSubscription struct {
-	ID              string    `json:"id"`               // Unique identifier for the subscription
-	Airport         string    `json:"airport"`          // Airport to get departures for (ICAO code)
-	ChannelID       string    `json:"channel_id"`       // Channel to post updates to
-	UserID          string    `json:"user_id"`          // User who created the subscription
-	UpdateFrequency int64     `json:"update_frequency"` // How often to update (in seconds)
-	LastUpdated     time.Time `json:"last_updated"`     // When the subscription was last updated
-	StopChan        chan struct{} `json:"-"`            // Channel to signal stopping the subscription
+	ID              string        `json:"id"`               // Unique identifier for the subscription
+	Airport         string        `json:"airport"`          // Airport to get departures for (ICAO code)
+	ChannelID       string        `json:"channel_id"`       // Channel to post updates to
+	UserID          string        `json:"user_id"`          // User who created the subscription
+	UpdateFrequency int64         `json:"update_frequency"` // How often to update (in seconds)
+	LastUpdated     time.Time     `json:"last_updated"`     // When the subscription was last updated
+	StopChan        chan struct{} `json:"-"`                // Channel to signal stopping the subscription
 }
 
 // SubscriptionManager manages flight subscriptions
@@ -160,20 +159,6 @@ func (sm *SubscriptionManager) GetSubscriptionsForChannel(channelID string) []*F
 	var subs []*FlightSubscription
 	for _, sub := range sm.Subscriptions {
 		if sub.ChannelID == channelID {
-			subs = append(subs, sub)
-		}
-	}
-	return subs
-}
-
-// GetSubscriptionsForUser gets all subscriptions for a user
-func (sm *SubscriptionManager) GetSubscriptionsForUser(userID string) []*FlightSubscription {
-	sm.Mutex.RLock()
-	defer sm.Mutex.RUnlock()
-
-	var subs []*FlightSubscription
-	for _, sub := range sm.Subscriptions {
-		if sub.UserID == userID {
 			subs = append(subs, sub)
 		}
 	}

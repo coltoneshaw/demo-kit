@@ -9,23 +9,33 @@ setup-mattermost:
 	@cp ./files/mattermost/copilotDefaults.json ./volumes/mattermost/config
 	@cp ./files/mattermost/samlCert.crt ./volumes/mattermost/config
 	@cp ./license.mattermost ./volumes/mattermost/config/license.mattermost-enterprise
-	@cd mattermost && go run ./cmd/main.go -setup
+
 
 check-mattermost:
-	@echo "Waiting for Mattermost server to start..."
-	@cd mattermost && go run ./cmd/main.go -setup || (echo "Mattermost server not ready yet, will try again later"; exit 0)
+	@make wait-for-mattermost || (echo "Mattermost server not ready yet, will try again later"; exit 0)
+
+wait-for-mattermost:
+	@echo "Waiting for Mattermost API to become available..."
+	@cd mattermost && go run ./cmd/main.go -wait-for-start
 
 restore-keycloak:
 	@./scripts/keycloak.sh restore
+
+build-apps:
+	@echo "Building app containers..."
+	@docker-compose build weather-app flightaware-app
+	@echo "App containers built successfully"
 
 run: 
 	@echo "Starting..."
 	@make restore-keycloak
 	@make run-core
 	@make setup-mattermost
+	@make wait-for-mattermost
 	@make run-ai
 	@make run-rtcd
 	@make run-integrations
+	@cd mattermost && go run ./cmd/main.go -setup
 	@make echo-logins
 
 run-ai:
@@ -47,7 +57,7 @@ run-core:
 
 run-integrations:
 	@echo "Starting the integrations..."
-	@docker-compose up -d weather-app flightaware-app
+	@docker-compose up -d --build weather-app flightaware-app
 
 run-rtcd:
 	@echo "Starting RTCD..."
@@ -82,10 +92,18 @@ delete-dockerfiles:
 
 delete-data: stop delete-dockerfiles
 
+purge:
+	@echo "Purging containers and volumes..."
+	@docker-compose down --volumes --remove-orphans
+	@make delete-data
+	@echo "Done"
+
 nuke: 
 	@echo "Nuking Docker..."
 	@docker-compose down --volumes --remove-orphans
 	@make delete-data
+	@echo "Removing app images..."
+	@docker rmi demo-kit-weather-app demo-kit-flightaware-app 2>/dev/null || true
 
 echo-logins:
 	@cd mattermost && go run ./cmd/main.go -echo-logins
