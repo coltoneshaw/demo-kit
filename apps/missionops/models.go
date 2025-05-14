@@ -19,6 +19,17 @@ type Mission struct {
 	Status          string    `json:"status"`          // Mission status (stalled, in air, completed, cancelled)
 }
 
+// MissionSubscription represents a subscription to mission status updates
+type MissionSubscription struct {
+	ID              string        `json:"id"`               // Unique identifier for the subscription
+	ChannelID       string        `json:"channel_id"`       // Channel to post updates to
+	UserID          string        `json:"user_id"`          // User who created the subscription
+	StatusTypes     []string      `json:"status_types"`     // Types of mission statuses to receive updates for (empty means all)
+	UpdateFrequency int64         `json:"update_frequency"` // How often to update (in seconds)
+	LastUpdated     time.Time     `json:"last_updated"`     // When the subscription was last updated
+	StopChan        chan struct{} `json:"-"`                // Channel to signal stopping the subscription
+}
+
 // MattermostPayload represents the incoming webhook payload from Mattermost
 type MattermostPayload struct {
 	Text       string `json:"text"`

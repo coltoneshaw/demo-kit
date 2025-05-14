@@ -15,7 +15,7 @@ func main() {
 	log.Println("Starting Mission Operations application...")
 
 	// Initialize the Mattermost client as early as possible to validate connection
-	_, err := NewClient()
+	mmClient, err := NewClient()
 	if err != nil {
 		log.Fatalf("Failed to initialize Mattermost client: %v", err)
 	}
@@ -23,18 +23,25 @@ func main() {
 	// Create mission manager with file path in the mounted volume
 	missionsFile := "/app/data/missions.json"
 	log.Printf("Using missions file: %s", missionsFile)
-	
 	missionManager := NewMissionManager(missionsFile)
 
+	// Create subscription manager with file path in the mounted volume
+	subscriptionsFile := "/app/data/mission_subscriptions.json"
+	log.Printf("Using subscriptions file: %s", subscriptionsFile)
+	subscriptionManager := NewSubscriptionManager(subscriptionsFile)
+
+	// Restart existing subscriptions
+	restartSubscriptions(subscriptionManager, missionManager, mmClient)
+
 	// Set up graceful shutdown
-	setupGracefulShutdown(missionManager)
+	setupGracefulShutdown(missionManager, subscriptionManager)
 
 	// Set up HTTP server
 	http.HandleFunc("/health", handleHealthCheck)
 	
 	// Set up webhook handler
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
-		handleIncomingWebhook(w, r, missionManager)
+		handleIncomingWebhook(w, r, missionManager, subscriptionManager)
 	})
 
 	// Add a debug endpoint to log request details
@@ -68,19 +75,29 @@ func main() {
 	log.Println("Shutting down server...")
 }
 
-// setupGracefulShutdown sets up graceful shutdown for the mission manager
-func setupGracefulShutdown(mm *MissionManager) {
+// setupGracefulShutdown sets up graceful shutdown for the managers
+func setupGracefulShutdown(mm *MissionManager, sm *SubscriptionManager) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-c
-		log.Println("Received shutdown signal, saving missions...")
+		log.Println("Received shutdown signal, saving data...")
+		
+		// Save missions
 		if err := mm.SaveToFile(); err != nil {
 			log.Printf("Error saving missions: %v", err)
 		} else {
 			log.Println("Missions saved successfully")
 		}
+		
+		// Save subscriptions
+		if err := sm.SaveToFile(); err != nil {
+			log.Printf("Error saving subscriptions: %v", err)
+		} else {
+			log.Println("Subscriptions saved successfully")
+		}
+		
 		os.Exit(0)
 	}()
 }
