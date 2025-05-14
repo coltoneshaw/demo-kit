@@ -573,6 +573,15 @@
           "username": "flight-bot",
           "autoComplete": true,
           "autoCompleteHint": "[departures/subscribe/unsubscribe/list] [--airport AIRPORT] [--frequency SECONDS]"
+        },
+        {
+          "trigger": "mission",
+          "url": "http://missionops-app:8087/webhook",
+          "displayName": "Mission Operations",
+          "description": "Manage flight missions and operations",
+          "username": "mission-ops-bot",
+          "autoComplete": true,
+          "autoCompleteHint": "[start/list/status] [--name NAME] [--callsign CALLSIGN] [--departureAirport CODE] [--arrivalAirport CODE] [--crew @user1 @user2 ...] [--id ID] [--status STATUS]"
         }
       ]
     }

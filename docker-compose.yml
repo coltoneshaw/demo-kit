@@ -160,3 +160,18 @@ services:
       - ./volumes/flightaware-app:/app/data
     depends_on:
       - mattermost
+      
+  missionops-app:
+    container_name: missionops-app
+    build:
+      context: ./apps/missionops
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8087:8087"
+    env_file:
+      - ./files/env_vars.env
+    volumes:
+      - ./volumes/missionops-app:/app/data
+    depends_on:
+      - mattermost

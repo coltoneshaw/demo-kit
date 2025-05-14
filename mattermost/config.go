@@ -266,7 +266,7 @@ func validateConfig(config *Config) error {
 
 				// Validate command is one of the supported types
 				validType := false
-				supportedTypes := []string{"weather", "flights"}
+				supportedTypes := []string{"weather", "flights", "mission"}
 				for _, t := range supportedTypes {
 					if cmdName == t {
 						validType = true

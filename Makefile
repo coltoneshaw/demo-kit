@@ -23,7 +23,7 @@ restore-keycloak:
 
 build-apps:
 	@echo "Building app containers..."
-	@docker-compose build weather-app flightaware-app
+	@docker-compose build weather-app flightaware-app missionops-app
 	@echo "App containers built successfully"
 
 run: 
@@ -57,7 +57,7 @@ run-core:
 
 run-integrations:
 	@echo "Starting the integrations..."
-	@docker-compose up -d --build weather-app flightaware-app
+	@docker-compose up -d --build weather-app flightaware-app missionops-app
 
 run-rtcd:
 	@echo "Starting RTCD..."
@@ -103,7 +103,7 @@ nuke:
 	@docker-compose down --volumes --remove-orphans
 	@make delete-data
 	@echo "Removing app images..."
-	@docker rmi demo-kit-weather-app demo-kit-flightaware-app 2>/dev/null || true
+	@docker rmi demo-kit-weather-app demo-kit-flightaware-app demo-kit-missionops-app 2>/dev/null || true
 
 echo-logins:
 	@cd mattermost && go run ./cmd/main.go -echo-logins
