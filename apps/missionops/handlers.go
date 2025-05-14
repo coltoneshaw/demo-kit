@@ -196,7 +196,11 @@ func handleStartCommand(c *Client, w http.ResponseWriter, args []string, channel
 		return
 	}
 	newChannelID := createdChannel.Id
-    
+	// Categorize the mission channel into "Active Missions" category
+	if err := c.CategorizeMissionChannel(newChannelID); err != nil {
+		log.Printf("Error categorizing mission channel: %v", err)
+		// Continue anyway, just log the error
+	}
 
 	// Get user IDs from usernames
 	userIDs := make([]string, 0, len(crew))
@@ -443,7 +447,7 @@ func handleStatusCommand(c *Client, w http.ResponseWriter, args []string, channe
 		sendErrorResponse(w, channelID, "Mission not found.")
 		return
 	}
-	
+
 	oldStatus := mission.Status
 
 	// Update the mission status
@@ -643,7 +647,7 @@ func handleSubscribeCommand(c *Client, w http.ResponseWriter, args []string, cha
 			return
 		}
 	}
-	
+
 	// Parse arguments
 	var statusTypes []string
 	var frequency int64 = 3600 // Default to hourly updates
@@ -662,7 +666,7 @@ func handleSubscribeCommand(c *Client, w http.ResponseWriter, args []string, cha
 				} else {
 					// Split by comma
 					statusTypes = strings.Split(typesStr, ",")
-					
+
 					// Validate each status type
 					validStatuses := map[string]bool{
 						"stalled":   true,
@@ -670,7 +674,7 @@ func handleSubscribeCommand(c *Client, w http.ResponseWriter, args []string, cha
 						"completed": true,
 						"cancelled": true,
 					}
-					
+
 					for _, status := range statusTypes {
 						if !validStatuses[status] {
 							sendErrorResponse(w, channelID, fmt.Sprintf("Invalid status type: %s. Valid types: stalled, in-air, completed, cancelled, or 'all'", status))
@@ -753,7 +757,7 @@ func handleUnsubscribeCommand(c *Client, w http.ResponseWriter, args []string, c
 			return
 		}
 	}
-	
+
 	// Parse arguments
 	var subscriptionID string
 
@@ -820,7 +824,7 @@ func subscribeHelpResponse(w http.ResponseWriter, channelID string) {
 		"- `/mission subscribe --type all --frequency 1800` - Updates every 30 minutes for all mission statuses\n\n" +
 		"To view existing subscriptions, use `/mission subscriptions`\n" +
 		"To cancel a subscription, use `/mission unsubscribe --id [subscription_id]`"
-	
+
 	response := MattermostResponse{
 		Text:         helpText,
 		ResponseType: "ephemeral",
@@ -841,7 +845,7 @@ func unsubscribeHelpResponse(w http.ResponseWriter, channelID string) {
 		"**Example:**\n" +
 		"- `/mission unsubscribe --id mission-sub-abc123`\n\n" +
 		"If you don't know your subscription ID, run `/mission subscriptions` to see all active subscriptions in this channel."
-	
+
 	response := MattermostResponse{
 		Text:         helpText,
 		ResponseType: "ephemeral",
@@ -864,7 +868,7 @@ func subscriptionsListHelpResponse(w http.ResponseWriter, channelID string) {
 		"- Time until next update\n\n" +
 		"To subscribe to mission updates, use `/mission subscribe --type [status1,status2] --frequency [seconds]`\n" +
 		"To cancel a subscription, use `/mission unsubscribe --id [subscription_id]`"
-	
+
 	response := MattermostResponse{
 		Text:         helpText,
 		ResponseType: "ephemeral",
@@ -882,7 +886,7 @@ func handleListSubscriptionsCommand(c *Client, w http.ResponseWriter, args []str
 			return
 		}
 	}
-	
+
 	// Get subscriptions for the channel
 	subs := subscriptionManager.GetSubscriptionsForChannel(channelID)
 	if len(subs) == 0 {
@@ -896,24 +900,24 @@ func handleListSubscriptionsCommand(c *Client, w http.ResponseWriter, args []str
 	sb.WriteString("|---|-------------|-----------|-------------|-------------|\n")
 
 	now := time.Now()
-	
+
 	for _, sub := range subs {
 		// Format status types for display
 		statusTypesText := "all"
 		if len(sub.StatusTypes) > 0 {
 			statusTypesText = strings.Join(sub.StatusTypes, ", ")
 		}
-		
+
 		// Calculate time until next update
 		nextUpdateTime := sub.LastUpdated.Add(time.Duration(sub.UpdateFrequency) * time.Second)
 		var timeUntilNext string
-		
+
 		if now.After(nextUpdateTime) {
 			timeUntilNext = "Due now"
 		} else {
 			// Calculate the duration until next update
 			duration := nextUpdateTime.Sub(now)
-			
+
 			// Format in a human-readable way
 			if duration.Hours() >= 1 {
 				hours := int(duration.Hours())

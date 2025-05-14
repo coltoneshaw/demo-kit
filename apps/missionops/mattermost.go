@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -61,4 +66,73 @@ func NewClient() (*Client, error) {
 // GetNewContext creates a new context with a standard timeout for API calls
 func (c *Client) GetNewContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 30*time.Second)
+}
+
+// CategorizeMissionChannel categorizes a mission channel into the "Active Missions" category 
+// using the Mattermost Playbooks API
+func (c *Client) CategorizeMissionChannel(channelID string) error {
+	if channelID == "" {
+		return fmt.Errorf("channel ID is required")
+	}
+
+	categoryName := "Active Missions"
+	log.Printf("Categorizing mission channel %s in category '%s' using Playbooks API...", channelID, categoryName)
+
+	// Construct the URL for the categorize channel API
+	url := fmt.Sprintf("%s/plugins/playbooks/api/v0/actions/channels/%s", c.serverURL, channelID)
+
+	// Create the payload
+	type Category struct {
+		CategoryName string `json:"category_name"`
+	}
+
+	type CategorizePayload struct {
+		Enabled     bool     `json:"enabled"`
+		Payload     Category `json:"payload"`
+		ChannelID   string   `json:"channel_id"`
+		ActionType  string   `json:"action_type"`
+		TriggerType string   `json:"trigger_type"`
+	}
+
+	payload := CategorizePayload{
+		Enabled: true,
+		Payload: Category{
+			CategoryName: categoryName,
+		},
+		ChannelID:   channelID,
+		ActionType:  "categorize_channel",
+		TriggerType: "new_member_joins",
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal categorize payload: %w", err)
+	}
+
+	// Create the request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create categorize request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.client.AuthToken)
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send categorize request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("categorize request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	log.Printf("✅ Successfully categorized mission channel in '%s' category", categoryName)
+	return nil
 }
