@@ -141,7 +141,8 @@ services:
     env_file:
       - ./files/env_vars.env
     volumes:
-      - ./volumes/weather-app:/app/data
+      - ./volumes/apps/weather:/app/data
+      # this needs to be copied into the container
       - ./apps/weather/static:/app/static
     depends_on:
       - mattermost
@@ -157,7 +158,7 @@ services:
     env_file:
       - ./files/env_vars.env
     volumes:
-      - ./volumes/flightaware-app:/app/data
+      - ./volumes/apps/flightaware:/app/data
     depends_on:
       - mattermost
       
@@ -172,6 +173,6 @@ services:
     env_file:
       - ./files/env_vars.env
     volumes:
-      - ./volumes/missionops-app:/app/data
+      - ./volumes/apps/missionops:/app/data
     depends_on:
       - mattermost
