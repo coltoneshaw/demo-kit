@@ -181,11 +181,14 @@ func handleStartCommand(c *Client, w http.ResponseWriter, args []string, channel
 		return
 	}
 
-	// Create the channel
+	// Get status emoji for initial status ("stalled")
+	initialStatusEmoji := GetStatusEmoji("stalled")
+
+	// Create the channel with status emoji in display name
 	channel := &model.Channel{
 		TeamId:      team.Id,
 		Name:        channelName,
-		DisplayName: fmt.Sprintf("%s: %s", callsign, name),
+		DisplayName: fmt.Sprintf("%s %s: %s", initialStatusEmoji, callsign, name),
 		Type:        model.ChannelTypeOpen,
 	}
 
@@ -196,6 +199,7 @@ func handleStartCommand(c *Client, w http.ResponseWriter, args []string, channel
 		return
 	}
 	newChannelID := createdChannel.Id
+	
 	// Categorize the mission channel into "Active Missions" category
 	if err := c.CategorizeMissionChannel(newChannelID); err != nil {
 		log.Printf("Error categorizing mission channel: %v", err)
@@ -459,9 +463,16 @@ func handleStatusCommand(c *Client, w http.ResponseWriter, args []string, channe
 			return
 		}
 
+		// Update the channel display name with the new status emoji
+		err := c.UpdateChannelDisplayName(ctx, mission.ChannelID, mission.Callsign, mission.Name, status)
+		if err != nil {
+			log.Printf("Error updating channel display name: %v", err)
+			// Continue anyway, just log the error
+		}
+
 		// Send a message to the mission channel
 		statusMsg := fmt.Sprintf("Mission status updated to: **%s**", status)
-		_, err := SendPost(ctx, c, mission.ChannelID, statusMsg)
+		_, err = SendPost(ctx, c, mission.ChannelID, statusMsg)
 		if err != nil {
 			log.Printf("Error sending message to mission channel: %v", err)
 		}

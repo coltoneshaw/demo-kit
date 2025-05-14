@@ -136,3 +136,57 @@ func (c *Client) CategorizeMissionChannel(channelID string) error {
 	log.Printf("✅ Successfully categorized mission channel in '%s' category", categoryName)
 	return nil
 }
+
+// GetStatusEmoji returns the appropriate emoji for a mission status
+func GetStatusEmoji(status string) string {
+	switch status {
+	case "stalled":
+		return "🛑" // Stop sign - mission is not active
+	case "in-air":
+		return "✈️" // Airplane - mission is in flight
+	case "completed":
+		return "✅" // Check mark - mission successfully completed
+	case "cancelled":
+		return "❌" // Cross mark - mission cancelled
+	default:
+		return "⚪" // Default - unknown status
+	}
+}
+
+// UpdateChannelDisplayName updates a channel's display name with the appropriate
+// status emoji based on the mission status
+func (c *Client) UpdateChannelDisplayName(ctx context.Context, channelID, callsign, name, status string) error {
+	if channelID == "" {
+		return fmt.Errorf("channel ID is required")
+	}
+
+	// Get the current channel
+	channel, resp, err := c.client.GetChannel(ctx, channelID, "")
+	if err != nil {
+		return fmt.Errorf("failed to get channel: %w (status code: %v)", err, resp.StatusCode)
+	}
+
+	// Create the new display name with emoji prefix
+	emoji := GetStatusEmoji(status)
+	newDisplayName := fmt.Sprintf("%s %s: %s", emoji, callsign, name)
+
+	// Check if the display name already has the correct emoji
+	if channel.DisplayName == newDisplayName {
+		// No change needed
+		return nil
+	}
+
+	// Create patch with new display name
+	patch := &model.ChannelPatch{
+		DisplayName: &newDisplayName,
+	}
+
+	// Update the channel
+	_, resp, err = c.client.PatchChannel(ctx, channelID, patch)
+	if err != nil {
+		return fmt.Errorf("failed to update channel display name: %w (status code: %v)", err, resp.StatusCode)
+	}
+
+	log.Printf("✅ Successfully updated channel display name to '%s'", newDisplayName)
+	return nil
+}
