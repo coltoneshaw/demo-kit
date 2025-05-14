@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -68,7 +69,7 @@ func (c *Client) GetNewContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 30*time.Second)
 }
 
-// CategorizeMissionChannel categorizes a mission channel into the "Active Missions" category 
+// CategorizeMissionChannel categorizes a mission channel into the "Active Missions" category
 // using the Mattermost Playbooks API
 func (c *Client) CategorizeMissionChannel(channelID string) error {
 	if channelID == "" {
@@ -189,4 +190,85 @@ func (c *Client) UpdateChannelDisplayName(ctx context.Context, channelID, callsi
 
 	log.Printf("✅ Successfully updated channel display name to '%s'", newDisplayName)
 	return nil
+}
+
+// UploadFile uploads a file to Mattermost and returns the file info
+func (c *Client) UploadFile(ctx context.Context, channelID, filePath string) (*model.FileInfo, error) {
+	if channelID == "" {
+		return nil, fmt.Errorf("channel ID is required")
+	}
+
+	if filePath == "" {
+		return nil, fmt.Errorf("file path is required")
+	}
+
+	// Check if file exists
+	_, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		// Return the original error so it can be properly checked with os.IsNotExist
+		return nil, fmt.Errorf("file %s not found: %w", filePath, err)
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to check file: %w", err)
+	}
+
+	// Open the file
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Extract filename from path
+	filename := filepath.Base(filePath)
+
+	// Read file contents
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file data: %w", err)
+	}
+
+	// Upload the file using UploadFileWithContext
+	fileUploadResp, resp, err := c.client.UploadFile(ctx, fileData, channelID, filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file: %w (status code: %v)", err, resp.StatusCode)
+	}
+
+	if len(fileUploadResp.FileInfos) == 0 {
+		return nil, fmt.Errorf("file upload response contained no file infos")
+	}
+
+	log.Printf("✅ Successfully uploaded file %s to channel %s", filename, channelID)
+	return fileUploadResp.FileInfos[0], nil
+}
+
+// SendPostWithAttachment creates and sends a post with a file attachment
+func (c *Client) SendPostWithAttachment(ctx context.Context, channelID, message, filePath string) (*model.Post, error) {
+	if channelID == "" {
+		return nil, fmt.Errorf("channel ID is required")
+	}
+
+	// Upload the file
+	fileInfo, err := c.UploadFile(ctx, channelID, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file for attachment: %w", err)
+	}
+
+	// Create post with file attachment
+	post := &model.Post{
+		ChannelId: channelID,
+		Message:   message,
+		FileIds:   []string{fileInfo.Id},
+		Props: map[string]any{
+			"from_webhook":      "true",
+			"override_username": "mission-ops-bot",
+		},
+	}
+
+	createdPost, resp, err := c.client.CreatePost(ctx, post)
+	if err != nil {
+		return nil, fmt.Errorf("error sending post with attachment: %w (status code: %d)", err, resp.StatusCode)
+	}
+
+	log.Printf("✅ Successfully sent post with attachment to channel %s", channelID)
+	return createdPost, nil
 }

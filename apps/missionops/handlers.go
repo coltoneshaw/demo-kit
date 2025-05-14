@@ -199,7 +199,7 @@ func handleStartCommand(c *Client, w http.ResponseWriter, args []string, channel
 		return
 	}
 	newChannelID := createdChannel.Id
-	
+
 	// Categorize the mission channel into "Active Missions" category
 	if err := c.CategorizeMissionChannel(newChannelID); err != nil {
 		log.Printf("Error categorizing mission channel: %v", err)
@@ -264,6 +264,19 @@ func handleStartCommand(c *Client, w http.ResponseWriter, args []string, channel
 	if err != nil {
 		log.Printf("Error sending message to channel: %v", err)
 		// Continue anyway, just log the error
+	}
+
+	// Send crew papers PDF as a post in the new channel
+	crewPapersMsg := "# Crew Papers"
+
+	// Container path for the PDF file
+	crewPapersPDFPath := "/app/files/USAF_Flight_Plan_Mock.pdf"
+
+	// Send the crew papers message with file attachment
+	_, err = SendPostWithAttachment(ctx, c, newChannelID, crewPapersMsg, crewPapersPDFPath)
+	if err != nil {
+		// Just log the error and continue - the function will still post a message without the attachment
+		log.Printf("Error sending crew papers post: %v", err)
 	}
 
 	// Execute weather commands for both airports and send instructional message
@@ -647,6 +660,31 @@ func SendPost(ctx context.Context, client *Client, channelID, message string) (*
 	}
 
 	return post, nil
+}
+
+// SendPostWithAttachment creates and sends a post with a file attachment
+func SendPostWithAttachment(ctx context.Context, client *Client, channelID, message, filePath string) (*model.Post, error) {
+	// Try to upload and send the post with attachment
+	result, err := client.SendPostWithAttachment(ctx, channelID, message, filePath)
+
+	// Handle error cases - check if it's a file not found error or any other error
+	if err != nil {
+		// Check if the original error contains "not found" or is a not exist error
+		errText := err.Error()
+		if strings.Contains(errText, "not found") ||
+			strings.Contains(errText, "no such file") ||
+			strings.Contains(errText, "does not exist") {
+			log.Printf("Warning: File %s not found, sending message without attachment", filePath)
+			// Send just the message without the attachment
+			return SendPost(ctx, client, channelID, message+"\n\n*Flight plan attachment not available*")
+		}
+
+		// For any other error, we'll log it but still send the message without attachment
+		log.Printf("Error sending post with attachment: %v", err)
+		return SendPost(ctx, client, channelID, message+"\n\n*Flight plan could not be attached due to an error*")
+	}
+
+	return result, nil
 }
 
 // handleSubscribeCommand handles the subscribe command
