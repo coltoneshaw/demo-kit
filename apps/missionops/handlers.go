@@ -1181,6 +1181,419 @@ func handleCompleteCommand(c *Client, w http.ResponseWriter, r *http.Request, ar
 // Note: We've removed the legacy handleDialogSubmission function since we now use
 // the dedicated endpoint handleMissionCompleteSubmission directly
 
+// Import model from Mattermost - this should already be available since we're using other Mattermost models
+// If it's not already imported, it would be:
+// import "github.com/mattermost/mattermost/server/public/model"
+
+// Use the Mattermost model directly, which has the right naming conventions
+// For reference, here's our previous custom structure:
+// type AutocompleteData struct {
+//   Complete    string `json:"Complete"`
+//   Suggestion  string `json:"Suggestion"`
+//   Hint        string `json:"Hint"`
+//   Description string `json:"Description"`
+//   IconData    string `json:"IconData"`
+// }
+
+// handleAutocomplete handles autocomplete requests from Mattermost
+// It returns suggestions for commands based on user input
+func handleAutocomplete(w http.ResponseWriter, r *http.Request) {
+	// Set content type header and allow both GET and POST methods
+	w.Header().Set("Content-Type", "application/json")
+
+	// Log the request for debugging
+	log.Printf("Autocomplete request received: %s %s", r.Method, r.URL.Path)
+	log.Printf("URL: %s", r.URL.String())
+
+	// Check that we're handling GET or POST
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		log.Printf("Unsupported method: %s", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Set security headers
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// Read and log URL query parameters
+	queryParams := r.URL.Query()
+	log.Printf("Query parameters: %v", queryParams)
+
+	// Handle form data for POST requests
+	if r.Method == http.MethodPost {
+		contentType := r.Header.Get("Content-Type")
+		log.Printf("Content-Type: %s", contentType)
+
+		// Parse form data if it's a form submission
+		if strings.Contains(contentType, "application/x-www-form-urlencoded") ||
+			strings.Contains(contentType, "multipart/form-data") {
+			err := r.ParseForm()
+			if err != nil {
+				log.Printf("Error parsing form data: %v", err)
+			} else {
+				log.Printf("Form data: %v", r.Form)
+				// If there's no text in query params but there is in form, use that
+				if queryParams.Get("text") == "" && r.FormValue("text") != "" {
+					queryParams.Set("text", r.FormValue("text"))
+				}
+				// Same for trigger
+				if queryParams.Get("trigger") == "" && r.FormValue("trigger") != "" {
+					queryParams.Set("trigger", r.FormValue("trigger"))
+				}
+			}
+		}
+	}
+
+	// Get command-related parameters from query parameters
+	trigger := queryParams.Get("trigger")
+	text := queryParams.Get("text")
+	channelID := queryParams.Get("channel_id")
+	teamID := queryParams.Get("team_id")
+	userID := queryParams.Get("user_id")
+
+	// Log exact pattern from Mattermost
+	log.Printf("Mattermost autocomplete parameters: trigger=%s, text=%s, channel_id=%s, team_id=%s, user_id=%s",
+		trigger, text, channelID, teamID, userID)
+
+	// Determine command from trigger parameter
+	var command string
+	if trigger != "" {
+		command = trigger
+		log.Printf("Using trigger '%s' as command", trigger)
+	} else {
+		// If no trigger, check if command is in the URL path
+		pathParts := strings.Split(r.URL.Path, "/")
+		if len(pathParts) > 2 && pathParts[1] == "autocomplete" && pathParts[2] != "" {
+			command = pathParts[2]
+			log.Printf("Extracted command '%s' from URL path", command)
+		}
+	}
+
+	// Check if command resembles a slash command, if it doesn't add a slash
+	if !strings.HasPrefix(command, "/") && command != "" {
+		command = "/" + command
+	}
+
+	// If we still don't have a command, check the URL path format like /mission/autocomplete
+	if command == "" {
+		pathParts := strings.Split(r.URL.Path, "/")
+		if len(pathParts) > 2 && pathParts[2] == "autocomplete" {
+			command = "/" + pathParts[1]
+			log.Printf("Extracted command '%s' from URL path format /cmd/autocomplete", command)
+		}
+	}
+
+	// If we still don't have a command, default to mission
+	if command == "" {
+		command = "/mission"
+		log.Printf("No command specified, defaulting to /mission")
+	}
+
+	log.Printf("Processing autocomplete for command: %s, text: %s", command, text)
+
+	// Process based on the command type
+
+	suggestions := getMissionCommandSuggestions(text)
+
+	// Log the response for debugging
+	responseJSON, _ := json.Marshal(suggestions)
+	log.Printf("Autocomplete response: %s", string(responseJSON))
+
+	// Explicitly set status code to 200 OK
+	w.WriteHeader(http.StatusOK)
+
+	// Return the suggestions as JSON with error handling
+	err := json.NewEncoder(w).Encode(suggestions)
+	if err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+		// In case of encoding error, send a simple response
+		w.Write([]byte("[]"))
+	}
+}
+
+// handleSpecificCommandAutocomplete is a simplified handler that always returns
+// suggestions for a specific command, regardless of the request parameters
+func handleSpecificCommandAutocomplete(w http.ResponseWriter, r *http.Request, commandType string) {
+	// Set content type and other headers
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// Log the request
+	log.Printf("Specific autocomplete request for command '%s': %s %s", commandType, r.Method, r.URL.Path)
+
+	// Get text parameter from anywhere it might be
+	var text string
+
+	// Try to get the text parameter from different places
+	if r.Method == http.MethodGet {
+		text = r.URL.Query().Get("text")
+	}
+
+	// For POST requests, check content type and parse form data
+	if r.Method == http.MethodPost {
+		contentType := r.Header.Get("Content-Type")
+		log.Printf("Content-Type: %s", contentType)
+
+		// Parse form data if it's a form submission
+		if strings.Contains(contentType, "application/x-www-form-urlencoded") ||
+			strings.Contains(contentType, "multipart/form-data") {
+			if err := r.ParseForm(); err != nil {
+				log.Printf("Error parsing form data: %v", err)
+			} else {
+				log.Printf("Form data: %v", r.Form)
+			}
+		}
+	}
+
+	// Try form value if URL parameter was empty
+	if text == "" {
+		text = r.FormValue("text")
+	}
+
+	log.Printf("Command '%s' specific autocomplete with text: '%s'", commandType, text)
+
+	// Get suggestions based on command type
+	var suggestions *model.AutocompleteData
+
+	// Get the command name without the slash prefix
+	cmdName := strings.TrimPrefix(commandType, "/")
+
+	switch cmdName {
+	case "mission":
+		suggestions = getMissionCommandSuggestions(text)
+	default:
+		// Log the unknown command type
+		log.Printf("Unknown command type: %s, defaulting to mission", commandType)
+		suggestions = getMissionCommandSuggestions(text)
+	}
+
+	// Log and return the response
+	responseJSON, _ := json.Marshal(suggestions)
+	log.Printf("Command '%s' specific autocomplete response: %s", commandType, string(responseJSON))
+
+	// Set status and encode the response
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(suggestions); err != nil {
+		log.Printf("Error encoding JSON: %v", err)
+		w.Write([]byte("[]"))
+	}
+}
+
+// getMissionCommandSuggestions returns autocomplete suggestions for the /mission command
+func getMissionCommandSuggestions(text string) *model.AutocompleteData {
+	// Create a hierarchical set of mission commands with proper argument structure
+	missionCommand := &model.AutocompleteData{
+		Trigger:  "mission",
+		HelpText: "Mission Operations Commands",
+		SubCommands: []*model.AutocompleteData{
+			{
+				Trigger:  "start",
+				HelpText: "Create a new mission",
+				Arguments: []*model.AutocompleteArg{
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint:    "[name]",
+							Pattern: "^[a-zA-Z0-9-_\\s]+$",
+						},
+						Name:     "name",
+						HelpText: "Mission name",
+						Required: false,
+					},
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint:    "[callsign]",
+							Pattern: "^[a-zA-Z0-9-_]+$",
+						},
+						Name:     "callsign",
+						HelpText: "Mission callsign",
+						Required: false,
+					},
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint:    "[airport]",
+							Pattern: "^[A-Z]{3,4}$",
+						},
+						Name:     "departureAirport",
+						HelpText: "Departure airport code",
+						Required: false,
+					},
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint:    "[airport]",
+							Pattern: "^[A-Z]{3,4}$",
+						},
+						Name:     "arrivalAirport",
+						HelpText: "Arrival airport code",
+						Required: false,
+					},
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint: "@user1 @user2",
+						},
+						Name:     "crew",
+						HelpText: "Crew members (space-separated usernames)",
+						Required: false,
+					},
+				},
+			},
+			{
+				Trigger:  "list",
+				HelpText: "List all missions",
+			},
+			{
+				Trigger:  "status",
+				HelpText: "Update mission status",
+				Arguments: []*model.AutocompleteArg{
+					{
+						Type: model.AutocompleteArgTypeStaticList,
+						Data: &model.AutocompleteStaticListArg{
+							PossibleArguments: []model.AutocompleteListItem{
+								{
+									Item:     "stalled",
+									HelpText: "Mission is not active",
+								},
+								{
+									Item:     "in-air",
+									HelpText: "Mission is in progress",
+								},
+								{
+									Item:     "completed",
+									HelpText: "Mission has been completed successfully",
+								},
+								{
+									Item:     "cancelled",
+									HelpText: "Mission has been cancelled",
+								},
+							},
+						},
+						HelpText: "New status for the mission",
+						Required: false,
+					},
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint: "[mission-id]",
+						},
+						Name:     "id",
+						HelpText: "Mission ID (required if not in a mission channel)",
+						Required: false,
+					},
+				},
+			},
+			{
+				Trigger:  "complete",
+				HelpText: "Fill out a post-mission report",
+				Arguments: []*model.AutocompleteArg{
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint: "[mission-id]",
+						},
+						Name:     "id",
+						HelpText: "Mission ID (required if not in a mission channel)",
+						Required: false,
+					},
+				},
+			},
+			{
+				Trigger:  "subscribe",
+				HelpText: "Subscribe to mission status updates",
+				Arguments: []*model.AutocompleteArg{
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint: "status1,status2 or all",
+						},
+						Name:     "type",
+						HelpText: "Status types to subscribe to (comma-separated or 'all')",
+						Required: false,
+					},
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint:    "[seconds]",
+							Pattern: "^[0-9]+$",
+						},
+						Name:     "frequency",
+						HelpText: "Update frequency in seconds (minimum 300)",
+						Required: false,
+					},
+				},
+			},
+			{
+				Trigger:  "unsubscribe",
+				HelpText: "Unsubscribe from mission updates",
+				Arguments: []*model.AutocompleteArg{
+					{
+						Type: model.AutocompleteArgTypeText,
+						Data: &model.AutocompleteTextArg{
+							Hint: "[subscription-id]",
+						},
+						Name:     "id",
+						HelpText: "Subscription ID",
+						Required: false,
+					},
+				},
+			},
+			{
+				Trigger:  "subscriptions",
+				HelpText: "List all subscriptions in this channel",
+			},
+		},
+	}
+
+	// If text is empty, return the complete mission command structure
+	if text == "" {
+		return missionCommand
+	}
+
+	// For subcommand completion, check if text contains a space
+	// This indicates they've already typed a subcommand and are working on arguments
+	parts := strings.SplitN(text, " ", 2)
+	if len(parts) > 1 {
+		subCmdName := parts[0]
+		// Find the matching subcommand
+		for _, subCmd := range missionCommand.SubCommands {
+			if subCmd.Trigger == subCmdName {
+				// We found the exact subcommand, let's return it with its arguments
+				log.Printf("Found exact subcommand match for '%s'", subCmdName)
+				parentCopy := *missionCommand
+				parentCopy.SubCommands = []*model.AutocompleteData{subCmd}
+				return &parentCopy
+			}
+		}
+	}
+
+	// For filtering top-level subcommands
+	filteredSubCmds := []*model.AutocompleteData{}
+
+	// Check for partial subcommand matches
+	for _, subCmd := range missionCommand.SubCommands {
+		if strings.HasPrefix(subCmd.Trigger, text) {
+			filteredSubCmds = append(filteredSubCmds, subCmd)
+		}
+	}
+
+	// If we found matches, create a filtered parent
+	if len(filteredSubCmds) > 0 {
+		parentCopy := *missionCommand
+		parentCopy.SubCommands = filteredSubCmds
+		return &parentCopy
+	} else {
+		// If no direct matches, return the full structure (Mattermost will filter client-side)
+		return missionCommand
+	}
+}
+
 // handleMissionCompleteSubmission handles submissions from the mission complete dialog
 // This is a dedicated endpoint that only handles mission complete forms
 func handleMissionCompleteSubmission(w http.ResponseWriter, r *http.Request, missionManager *MissionManager, subscriptionManager *SubscriptionManager) {

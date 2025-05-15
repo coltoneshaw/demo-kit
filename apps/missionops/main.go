@@ -38,16 +38,19 @@ func main() {
 
 	// Set up HTTP server
 	http.HandleFunc("/health", handleHealthCheck)
-	
+
 	// Set up webhook handler
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
 		handleIncomingWebhook(w, r, missionManager, subscriptionManager)
 	})
-	
+
 	// Set up dedicated mission complete handler
 	http.HandleFunc("/mission/complete", func(w http.ResponseWriter, r *http.Request) {
 		handleMissionCompleteSubmission(w, r, missionManager, subscriptionManager)
 	})
+
+	// Set up autocomplete handlers - support both generic and command-specific paths
+	http.HandleFunc("/autocomplete", handleAutocomplete)
 
 	// Add a debug endpoint to log request details
 	http.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
@@ -88,21 +91,21 @@ func setupGracefulShutdown(mm *MissionManager, sm *SubscriptionManager) {
 	go func() {
 		<-c
 		log.Println("Received shutdown signal, saving data...")
-		
+
 		// Save missions
 		if err := mm.SaveToFile(); err != nil {
 			log.Printf("Error saving missions: %v", err)
 		} else {
 			log.Println("Missions saved successfully")
 		}
-		
+
 		// Save subscriptions
 		if err := sm.SaveToFile(); err != nil {
 			log.Printf("Error saving subscriptions: %v", err)
 		} else {
 			log.Println("Subscriptions saved successfully")
 		}
-		
+
 		os.Exit(0)
 	}()
 }
