@@ -77,9 +77,13 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 
 	if err != nil {
 		p.client.Log.Error("Error executing command", "error", err.Error())
-		return nil, model.NewAppError("ExecuteCommand", "app.command.execute.error", nil, err.Error(), 500)
-	}
 
+		// Return a user-friendly error message instead of a 500 error
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         err.Error(),
+		}, nil
+	}
 	return response, nil
 }
 

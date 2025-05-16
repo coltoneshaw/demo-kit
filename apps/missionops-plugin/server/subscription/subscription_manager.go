@@ -88,8 +88,8 @@ func (s *SubscriptionManager) GetSubscription(id string) (*MissionSubscription, 
 	s.client.Log.Debug("Getting subscription", "id", id)
 
 	key := SubscriptionPrefix + id
-	data := []byte{}
-	err := s.client.KV.Get(key, data)
+	var data []byte
+	err := s.client.KV.Get(key, &data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get subscription from KV store")
 	}
@@ -257,8 +257,8 @@ func (s *SubscriptionManager) StopSubscriptionJob(id string) error {
 
 // getSubscriptionsList retrieves the list of all subscription IDs
 func (s *SubscriptionManager) getSubscriptionsList() ([]string, error) {
-	data := []byte{}
-	err := s.client.KV.Get(SubscriptionsListKey, data)
+	var data []byte
+	err := s.client.KV.Get(SubscriptionsListKey, &data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get subscriptions list from KV store")
 	}

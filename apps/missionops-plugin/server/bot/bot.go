@@ -92,8 +92,8 @@ func (b *MissionBot) GetBotUserInfo() *model.Bot {
 }
 
 func (b *MissionBot) fetchOrCreateBotToken() error {
-	kvToken := []byte{}
-	err := b.client.KV.Get("bot_token", kvToken)
+	var kvToken []byte
+	err := b.client.KV.Get("bot_token", &kvToken)
 	if err != nil {
 		return errors.Wrap(err, "failed to get bot token from KV store")
 	}

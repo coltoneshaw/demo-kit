@@ -84,7 +84,7 @@ func (c *Handler) executeMissionSubscriptionsCommand(args *model.CommandArgs) (*
 }
 
 // executeMissionSubscriptionsHelpCommand handles showing help for the subscriptions command
-func executeMissionSubscriptionsHelpCommand(args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+func executeMissionSubscriptionsHelpCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
 	helpText := "**Mission Subscriptions Command Help**\n\n" +
 		"The subscriptions command shows all active mission status subscriptions in the current channel.\n\n" +
 		"**Usage:**\n" +

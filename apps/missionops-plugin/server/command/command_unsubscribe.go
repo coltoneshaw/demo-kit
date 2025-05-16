@@ -62,7 +62,7 @@ func (c *Handler) executeMissionUnsubscribeCommand(args *model.CommandArgs) (*mo
 }
 
 // executeMissionUnsubscribeHelpCommand handles showing help for the unsubscribe command
-func executeMissionUnsubscribeHelpCommand(args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+func executeMissionUnsubscribeHelpCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
 	helpText := "**Mission Unsubscribe Command Help**\n\n" +
 		"The unsubscribe command allows you to stop receiving automatic mission updates.\n\n" +
 		"**Usage:**\n" +

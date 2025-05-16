@@ -37,8 +37,8 @@ func (m *Mission) GetMission(id string) (*Mission, error) {
 	m.client.Log.Info("Getting mission", "id", id)
 
 	key := MissionPrefix + id
-	data := []byte{}
-	err := m.client.KV.Get(key, data)
+	var data []byte
+	err := m.client.KV.Get(key, &data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get mission from KV store")
 	}
@@ -148,10 +148,10 @@ func (m *Mission) GetMissionsByStatus(status string) ([]*Mission, error) {
 
 // getMissionsList retrieves the list of all mission IDs
 func (m *Mission) getMissionsList() ([]string, error) {
-	missionLists := []byte{}
-	appErr := m.client.KV.Get(MissionsListKey, missionLists)
-	if appErr != nil {
-		return nil, errors.Wrap(appErr, "failed to get missions list from KV store")
+	var missionLists []byte
+	err := m.client.KV.Get(MissionsListKey, &missionLists)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get missions list from KV store")
 	}
 
 	if missionLists == nil {

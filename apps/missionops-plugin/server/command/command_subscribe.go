@@ -120,7 +120,7 @@ func (c *Handler) executeMissionSubscribeCommand(args *model.CommandArgs) (*mode
 }
 
 // executeMissionSubscribeHelpCommand handles showing help for the subscribe command
-func executeMissionSubscribeHelpCommand(args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+func executeMissionSubscribeHelpCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
 	helpText := "**Mission Subscription Command Help**\n\n" +
 		"The subscribe command allows you to receive automatic updates about missions with specific statuses.\n\n" +
 		"**Usage:**\n" +
