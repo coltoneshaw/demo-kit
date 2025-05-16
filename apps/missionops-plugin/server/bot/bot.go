@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"fmt"
+
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
 	"github.com/pkg/errors"
@@ -28,6 +30,9 @@ type BotInterface interface {
 
 	// GetBundlePath returns the bundle path
 	GetBundlePath() string
+
+	// EnsureTeamMember makes sure the bot is a member of the specified team
+	EnsureTeamMember(teamID string) error
 }
 
 func NewBotHandler(client *pluginapi.Client) BotInterface {
@@ -89,6 +94,28 @@ func (b *MissionBot) PostMessageFromBot(channelID, message string) (*model.Post,
 // GetBotUserInfo returns the bot's user ID
 func (b *MissionBot) GetBotUserInfo() *model.Bot {
 	return b.Bot
+}
+
+// EnsureTeamMember makes sure the bot is a member of the specified team
+func (b *MissionBot) EnsureTeamMember(teamID string) error {
+	if teamID == "" {
+		return fmt.Errorf("team ID is required")
+	}
+
+	// Try to get the team member to check if the bot is already in the team
+	_, err := b.client.Team.GetMember(teamID, b.Bot.UserId)
+	if err != nil {
+		// Bot is not in the team, try to add it
+		b.client.Log.Info("Bot is not in the team, adding it now", "teamId", teamID)
+
+		_, err = b.client.Team.CreateMember(teamID, b.Bot.UserId)
+		if err != nil {
+			return errors.Wrap(err, "failed to add bot to team")
+		}
+		b.client.Log.Info("Successfully added bot to team", "teamId", teamID)
+	}
+
+	return nil
 }
 
 func (b *MissionBot) fetchOrCreateBotToken() error {

@@ -1,9 +1,12 @@
 package command
 
 import (
+	"encoding/json"
 	"fmt"
-	"time"
+	"log"
+	"net/http"
 
+	"github.com/gorilla/mux"
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
@@ -23,53 +26,169 @@ func (c *Handler) executeMissionCompleteCommand(args *model.CommandArgs) (*model
 			}, nil
 		}
 		missionID = mission.ID
-	} else {
-		// Get the mission by ID
-		_, err := c.mission.GetMission(missionID)
-		if err != nil {
-			return &model.CommandResponse{
-				ResponseType: model.CommandResponseTypeEphemeral,
-				Text:         "Mission not found with the provided ID.",
-			}, nil
-		}
 	}
 
-	// Set status to completed
-	if err := c.mission.UpdateMissionStatus(missionID, "completed"); err != nil {
-		c.client.Log.Error("Error updating mission status", "error", err.Error())
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         fmt.Sprintf("Error completing mission: %v", err),
-		}, nil
-	}
-
-	// Get the updated mission
+	// Get the mission by ID to display details in the dialog
 	mission, err := c.mission.GetMission(missionID)
 	if err != nil {
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         "Mission not found after update.",
+			Text:         "Mission not found with the provided ID.",
 		}, nil
 	}
 
-	// Format post-mission report
-	report := fmt.Sprintf("# Mission Completed: %s\n\n"+
-		"**Callsign:** %s\n"+
-		"**Departure:** %s\n"+
-		"**Arrival:** %s\n"+
-		"**Completed At:** %s\n",
-		mission.Name, mission.Callsign, mission.DepartureAirport, mission.ArrivalAirport, time.Now().Format(time.RFC1123))
-
-	// Post to mission channel
-	_, reportPost := c.bot.PostMessageFromBot(mission.ChannelID, report)
-
-	if reportPost == nil {
-		c.client.Log.Error("Error sending report to mission channel", "error", err.Error())
+	if mission.Status == "completed" {
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "This mission has already been completed.",
+		}, nil
 	}
 
-	// Return a success message
+	// Create the interactive dialog
+	dialog := model.OpenDialogRequest{
+		TriggerId: args.TriggerId,
+		URL:       fmt.Sprintf("/plugins/com.coltoneshaw.missionops/api/v1/missions/%s/complete", missionID),
+		Dialog: model.Dialog{
+			CallbackId:       "mission_complete_dialog",
+			Title:            "Post-Mission Report",
+			IntroductionText: fmt.Sprintf("Complete mission report for: **%s** (Callsign: **%s**)", mission.Name, mission.Callsign),
+			SubmitLabel:      "Submit Report",
+			NotifyOnCancel:   false,
+			State:            missionID,
+			Elements: []model.DialogElement{
+				{
+					DisplayName: "Mission Objectives Completion",
+					Name:        "mission_objectives_completion",
+					Type:        "select",
+					Optional:    true,
+					Options: []*model.PostActionOptions{
+						{Text: "Yes - All objectives completed", Value: "all_completed"},
+						{Text: "Partial - Some objectives completed", Value: "partial"},
+						{Text: "No - Mission objectives not met", Value: "none"},
+					},
+				},
+				{
+					DisplayName: "Mission Duration",
+					Name:        "mission_duration",
+					Type:        "text",
+					SubType:     "number",
+					Optional:    false,
+					Placeholder: "Enter flight hours",
+				},
+				{
+					DisplayName: "Crew Performance",
+					Name:        "crew_performance",
+					Type:        "select",
+					Optional:    true,
+					Options: []*model.PostActionOptions{
+						{Text: "Excellent", Value: "excellent"},
+						{Text: "Good", Value: "good"},
+						{Text: "Satisfactory", Value: "satisfactory"},
+						{Text: "Needs Improvement", Value: "needs_improvement"},
+					},
+				},
+				{
+					DisplayName: "Notable Events",
+					Name:        "notable_events",
+					Type:        "textarea",
+					Optional:    true,
+					Placeholder: "Describe any notable events during the mission",
+					MaxLength:   2000,
+				},
+			},
+		},
+	}
+
+	// Open the dialog
+	if err := c.client.Frontend.OpenInteractiveDialog(dialog); err != nil {
+		c.client.Log.Error("Error opening interactive dialog", "error", err.Error())
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "Error opening mission completion dialog. Please try again.",
+		}, nil
+	}
+
+	// Return an empty response, as the dialog will handle the interaction
 	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeInChannel,
-		Text:         fmt.Sprintf("✅ Mission **%s** marked as completed", mission.Name),
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         "",
 	}, nil
+}
+
+// handleMissionComplete handles the mission completion dialog submission
+func (h *Handler) HandleMissionComplete(w http.ResponseWriter, r *http.Request) {
+	// Parse request body
+	var request model.SubmitDialogRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		h.client.Log.Error("Error decoding dialog submission", "error", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Get mission ID from URL path
+	vars := mux.Vars(r)
+	missionID := vars["mission_id"]
+	if missionID == "" {
+		h.client.Log.Error("Missing mission ID in URL")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Extract submission data
+	var objectivesCompletion, notableEvents, crewPerformance string
+	if objectivesValue, ok := request.Submission["mission_objectives_completion"].(string); ok {
+		objectivesCompletion = fmt.Sprintf("%v", objectivesValue)
+	}
+	if notableEventsValue, ok := request.Submission["notable_events"]; ok {
+		notableEvents = fmt.Sprintf("%v", notableEventsValue)
+	}
+	if crewPerformanceValue, ok := request.Submission["crew_performance"].(string); ok {
+		crewPerformance = fmt.Sprintf("%v", crewPerformanceValue)
+	}
+
+	// Mission duration could be a number or string depending on the form handling
+	var missionDurationStr string
+	if durationNum, ok := request.Submission["mission_duration"].(float64); ok {
+		missionDurationStr = fmt.Sprintf("%.1f", durationNum)
+	} else if durationStr, ok := request.Submission["mission_duration"].(string); ok {
+		missionDurationStr = durationStr
+	} else {
+		missionDurationStr = "Unknown"
+		log.Printf("Mission duration has unexpected type: %T", request.Submission["mission_duration"])
+	}
+
+	// Get the mission
+	mission, err := h.mission.GetMission(missionID)
+	if err != nil {
+		log.Printf("Mission not found: %s", request.State)
+		http.Error(w, "Mission not found", http.StatusBadRequest)
+		return
+	}
+
+	// Log submission data for debugging
+	h.client.Log.Debug("Mission completion data",
+		"missionID", missionID,
+		"objectives", objectivesCompletion,
+		"crewPerformance", crewPerformance,
+		"duration", missionDurationStr)
+
+	err = h.mission.CompleteMission(missionID, objectivesCompletion, notableEvents, crewPerformance, missionDurationStr, request.UserId)
+	if err != nil {
+		h.client.Log.Error("Error completing mission", "error", err.Error())
+		response := model.SubmitDialogResponse{
+			Error: "Error completing mission: " + err.Error(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	go h.subscription.NotifySubscribersOfStatusChange(mission, mission.Status)
+
+	// Send success response
+	response := model.SubmitDialogResponse{
+		Error: "",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

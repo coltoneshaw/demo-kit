@@ -1,12 +1,14 @@
 package main
 
 import (
+	"net/http"
 	"sync"
 
 	"github.com/coltoneshaw/demokit/missionops-plugin/server/bot"
 	"github.com/coltoneshaw/demokit/missionops-plugin/server/command"
 	"github.com/coltoneshaw/demokit/missionops-plugin/server/mission"
 	"github.com/coltoneshaw/demokit/missionops-plugin/server/subscription"
+	"github.com/gorilla/mux"
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
@@ -31,7 +33,6 @@ type Plugin struct {
 	bot          bot.BotInterface
 	mission      mission.MissionInterface
 	subscription subscription.SubscriptionInterface
-	bundlepath   string
 }
 
 // OnActivate is invoked when the plugin is activated.
@@ -85,6 +86,16 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		}, nil
 	}
 	return response, nil
+}
+
+// ServeHTTP implements the http.Handler interface for the plugin
+func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Request) {
+	router := mux.NewRouter()
+
+	// API routes
+	router.HandleFunc("/api/v1/missions/{mission_id}/complete", p.commandClient.HandleMissionComplete).Methods("POST")
+
+	router.ServeHTTP(w, r)
 }
 
 func main() {

@@ -3,6 +3,7 @@ module github.com/coltoneshaw/demokit/missionops-plugin
 go 1.24
 
 require (
+	github.com/gorilla/mux v1.8.1
 	github.com/mattermost/mattermost/server/public v0.1.12
 	github.com/pkg/errors v0.9.1
 )

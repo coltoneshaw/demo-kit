@@ -112,10 +112,21 @@ func (c *Handler) executeMissionSubscribeCommand(args *model.CommandArgs) (*mode
 		statusTypesText = fmt.Sprintf("mission statuses: %s", strings.Join(statusTypes, ", "))
 	}
 
+	// Send confirmation message
+	_, err = c.bot.PostMessageFromBot(args.ChannelId, fmt.Sprintf("✅ Subscribed to %s. Updates will be sent every %d seconds (ID: `%s`).", statusTypesText, frequency, subscription.ID))
+
+	if err != nil {
+		c.client.Log.Error("Error sending confirmation message", "error", err.Error())
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "Error sending confirmation message. Please check your permissions.",
+		}, nil
+	}
+
 	// Send confirmation
 	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeInChannel,
-		Text:         fmt.Sprintf("✅ Subscribed to %s. Updates will be sent every %d seconds (ID: `%s`).", statusTypesText, frequency, subscription.ID),
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         "",
 	}, nil
 }
 

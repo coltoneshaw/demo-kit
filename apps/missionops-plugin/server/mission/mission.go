@@ -16,6 +16,7 @@ type MissionInterface interface {
 	GetMissionsByStatus(status string) ([]*Mission, error)
 	GetStatusEmoji(status string) string
 	CategorizeMissionChannel(channelID, teamID string) error
+	CompleteMission(missionID, objectivesCompletion, notableEvents, crewPerformance, missionDurationStr, userID string) error
 }
 
 func NewMissionHandler(client *pluginapi.Client, bot bot.BotInterface) MissionInterface {

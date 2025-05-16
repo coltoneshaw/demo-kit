@@ -110,13 +110,6 @@ func (c *Handler) executeMissionStatusCommand(args *model.CommandArgs) (*model.C
 		c.client.Log.Error("Error updating channel display name", "error", err.Error())
 	}
 
-	// Send a message to the mission channel
-	statusMsg := fmt.Sprintf("Mission status updated to: **%s**", status)
-	_, err = c.bot.PostMessageFromBot(mission.ChannelID, statusMsg)
-	if err != nil {
-		c.client.Log.Error("Error sending message to mission channel", "error", err.Error())
-	}
-
 	// If status changed to "in-air", execute weather commands for both airports
 	if status == "in-air" {
 		go func() {
@@ -163,9 +156,17 @@ func (c *Handler) executeMissionStatusCommand(args *model.CommandArgs) (*model.C
 		go c.subscription.NotifySubscribersOfStatusChange(mission, oldStatus)
 	}
 
+	_, err = c.bot.PostMessageFromBot(mission.ChannelID, fmt.Sprintf("✅ Mission **%s** status updated to **%s**", mission.Name, status))
+	if err != nil {
+		c.client.Log.Error("Error sending success message", "error", err.Error())
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "Error sending success message. Please check your permissions.",
+		}, nil
+	}
 	// Send success response
 	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeInChannel,
-		Text:         fmt.Sprintf("✅ Mission **%s** status updated to **%s**", mission.Name, status),
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         "",
 	}, nil
 }

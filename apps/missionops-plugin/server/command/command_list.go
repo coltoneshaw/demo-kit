@@ -38,9 +38,11 @@ func (c *Handler) executeMissionListCommand(args *model.CommandArgs) (*model.Com
 			mission.Status, mission.ChannelName))
 	}
 
+	_, err = c.bot.PostMessageFromBot(args.ChannelId, sb.String())
+
 	// Send the response
 	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeInChannel,
-		Text:         sb.String(),
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         "",
 	}, nil
 }

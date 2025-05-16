@@ -77,9 +77,18 @@ func (c *Handler) executeMissionSubscriptionsCommand(args *model.CommandArgs) (*
 
 	sb.WriteString("\nTo unsubscribe, use `/mission unsubscribe --id [subscription_id]`")
 
+	_, err = c.bot.PostMessageFromBot(args.ChannelId, sb.String())
+	if err != nil {
+		c.client.Log.Error("Error sending message", "error", err.Error())
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "Error sending message. Please check your permissions.",
+		}, nil
+	}
+
 	return &model.CommandResponse{
 		ResponseType: model.CommandResponseTypeInChannel,
-		Text:         sb.String(),
+		Text:         "",
 	}, nil
 }
 

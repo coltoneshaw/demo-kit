@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/coltoneshaw/demokit/missionops-plugin/server/bot"
@@ -29,6 +30,7 @@ type Command interface {
 	executeMissionSubscribeCommand(args *model.CommandArgs) (*model.CommandResponse, error)
 	executeMissionUnsubscribeCommand(args *model.CommandArgs) (*model.CommandResponse, error)
 	executeMissionSubscriptionsCommand(args *model.CommandArgs) (*model.CommandResponse, error)
+	HandleMissionComplete(w http.ResponseWriter, r *http.Request)
 }
 
 const helloCommandTrigger = "hello"

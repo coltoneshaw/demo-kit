@@ -2,7 +2,6 @@ package command
 
 import (
 	"bytes"
-	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,6 +75,13 @@ func parseMissionStartArgs(command string, pluginAPI *pluginapi.Client) (*missio
 
 // executeMissionStartCommand handles the /mission start command
 func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
+	// First, ensure the bot is a member of the team where the command is being executed
+	if err := c.bot.EnsureTeamMember(args.TeamId); err != nil {
+		return &model.CommandResponse{
+			ResponseType: model.CommandResponseTypeEphemeral,
+			Text:         "❌ Error: The Mission Ops Bot cannot be added to this team. This is required to create mission channels. Please contact your system administrator.",
+		}, fmt.Errorf("failed to ensure bot is a team member: %v", err)
+	}
 
 	parsedMissionInfo, err := parseMissionStartArgs(args.Command, c.client)
 	if err != nil {
@@ -84,7 +90,7 @@ func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.Co
 
 	// Create the Mattermost channel name (callsign-name)
 	// Ensure it's lowercase and replace spaces with dashes
-	channelName := strings.ToLower(fmt.Sprintf("%s-%s", parsedMissionInfo.Callsign, parsedMissionInfo.Callsign))
+	channelName := strings.ToLower(fmt.Sprintf("%s-%s", parsedMissionInfo.Callsign, parsedMissionInfo.Name))
 	channelName = strings.ReplaceAll(channelName, " ", "-")
 
 	// Get status emoji for initial status ("stalled")
@@ -100,7 +106,11 @@ func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.Co
 
 	err = c.client.Channel.Create(channel)
 	if err != nil {
-		return c.logCommandError(fmt.Sprintf("Error creating channel: %v", err)), err
+		// Provide a clearer error message for channel creation failures
+		if strings.Contains(err.Error(), "already exists") {
+			return c.logCommandError(fmt.Sprintf("A channel with this name already exists. Please use a different callsign or mission name.")), err
+		}
+		return c.logCommandError(fmt.Sprintf("Error creating mission channel: %v", err)), err
 	}
 
 	// Categorize the mission channel into "Active Missions" category using Playbooks API
@@ -113,7 +123,7 @@ func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.Co
 	// Add all users to the channel
 	for _, user := range parsedMissionInfo.Crew {
 		if _, err := c.client.Channel.AddUser(channel.Id, user.Id, c.bot.GetBotUserInfo().UserId); err != nil {
-			return c.logCommandError(fmt.Sprintf("Error adding user to channel", "userId", user.Id, "error", err.Error())), err
+			return c.logCommandError(fmt.Sprintf("Error adding user to channel: userId=%s, error=%s", user.Id, err.Error())), err
 		}
 		crewIds = append(crewIds, user.Id)
 		crewUsernames = append(crewUsernames, user.Username)
@@ -139,6 +149,11 @@ func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.Co
 		return c.logCommandError(fmt.Sprintf("Error saving the mission", "error", err.Error())), err
 	}
 
+	usernames := make([]string, len(crewUsernames))
+	for i, user := range crewUsernames {
+		usernames[i] = fmt.Sprintf("@%s", user)
+	}
+
 	// Send a message to the new channel with mission details
 	missionDetails := fmt.Sprintf("# Mission Created: %s\n\n"+
 		"**Callsign:** %s\n"+
@@ -146,7 +161,7 @@ func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.Co
 		"**Arrival:** %s\n"+
 		"**Status:** %s\n"+
 		"**Crew:** %s\n\n",
-		parsedMissionInfo.Name, parsedMissionInfo.Callsign, parsedMissionInfo.DepartureAirport, parsedMissionInfo.ArrivalAirport, mission.Status, strings.Join(crewUsernames, ", "))
+		parsedMissionInfo.Name, parsedMissionInfo.Callsign, parsedMissionInfo.DepartureAirport, parsedMissionInfo.ArrivalAirport, mission.Status, strings.Join(usernames, ", "))
 
 	_, err = c.bot.PostMessageFromBot(channel.Id, missionDetails)
 	if err != nil {
@@ -159,9 +174,6 @@ func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.Co
 		return c.logCommandError(fmt.Sprintf("Error uploading flight plan PDF", "error", err.Error())), err
 	}
 
-	// Execute weather commands for departure and arrival airports
-	c.executeWeatherCommands(mission)
-
 	time.Sleep(1 * time.Second)
 	// First send a message explaining what we're doing
 	introMsg := "🌤️ **Checking Weather for Mission** 🌤️\n\nGetting current weather conditions for departure and arrival airports..."
@@ -170,10 +182,20 @@ func (c *Handler) executeMissionStartCommand(args *model.CommandArgs) (*model.Co
 		c.client.Log.Error("Error sending intro message", "error", err.Error())
 	}
 
-	// Send success response back to original channel
+	// Execute weather commands for departure and arrival airports
+	c.executeWeatherCommands(mission)
+
+	// Have the bot post the success message directly to the channel instead of returning it
+	successMsg := fmt.Sprintf("✅ Mission **%s** created with callsign **%s**. Channel: ~%s", mission.Name, mission.Callsign, channelName)
+	_, err = c.bot.PostMessageFromBot(args.ChannelId, successMsg)
+	if err != nil {
+		c.client.Log.Error("Error sending success message", "error", err.Error())
+	}
+
+	// Return an empty response - the bot has already posted the message
 	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeInChannel,
-		Text:         fmt.Sprintf("✅ Mission **%s** created with callsign **%s**. Channel: ~%s", mission.Name, mission.Callsign, channelName),
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         "",
 	}, nil
 }
 
@@ -190,13 +212,13 @@ func (c *Handler) UploadFlightPlanPDF(channelID string) error {
 		return errors.Wrap(err, "failed to send flight plan message")
 	}
 
-	flightPlanPDF, err := os.ReadFile(filepath.Join(c.bot.GetBundlePath(), "assets", "USAF_Flight_Plan_Mock.png"))
+	flightPlanPDF, err := os.ReadFile(filepath.Join(c.bot.GetBundlePath(), "assets", "USAF_Flight_Plan_Mock.pdf"))
 	if err != nil {
 		return errors.Wrap(err, "failed to read profile image")
 	}
 
 	// Upload file to Mattermost using the embedded PDF data
-	fileInfo, err := c.client.File.Upload(bytes.NewReader(flightPlanPDF), channelID, "USAF_Flight_Plan_Mock.pdf")
+	fileInfo, err := c.client.File.Upload(bytes.NewReader(flightPlanPDF), "USAF_Flight_Plan_Mock.pdf", channelID)
 	if err != nil {
 		return err
 	}
