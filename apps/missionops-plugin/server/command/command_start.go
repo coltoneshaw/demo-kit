@@ -36,7 +36,12 @@ func parseMissionStartArgs(command string, pluginAPI *pluginapi.Client) (*missio
 	crewUserData := []model.User{}
 	for _, username := range crewUsernames {
 		// TODO - may need to clean the username.
-		user, err := pluginAPI.User.GetByUsername(username)
+		// Remove the @ symbol if it exists at the beginning of the username
+		cleanUsername := username
+		if strings.HasPrefix(username, "@") {
+			cleanUsername = username[1:]
+		}
+		user, err := pluginAPI.User.GetByUsername(cleanUsername)
 		if err != nil {
 			return nil, errors.New(fmt.Sprintf("User not found: %s", username))
 		}
