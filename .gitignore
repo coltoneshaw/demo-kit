@@ -15,5 +15,7 @@ files/postgres/replica/replica_2.conf
 files/postgres/replica/replica_2_postgres.conf
 .aider*
 .env
-**/.claude/settings.local.json
+**/.claude/** */
 **/coverage.*
+**/build/bin
+**/dist

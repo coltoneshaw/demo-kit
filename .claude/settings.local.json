@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(grep:*)",
+      "Bash(mv:*)",
+      "Bash(docker logs:*)",
+      "Bash(go tool cover:*)",
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(od:*)",
+      "WebFetch(domain:developers.mattermost.com)",
+      "Bash(curl:*)",
+      "Bash(rm:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(cp:*)"
+    ],
+    "deny": []
+  }
+}

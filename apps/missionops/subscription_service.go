@@ -22,7 +22,7 @@ func startMissionSubscription(sub *MissionSubscription, sm *SubscriptionManager,
 		now := time.Now()
 
 		// Log subscription details
-		log.Printf("Fetching mission updates for subscription %s (Channel: %s, Status Types: %v)", 
+		log.Printf("Fetching mission updates for subscription %s (Channel: %s, Status Types: %v)",
 			sub.ID, sub.ChannelID, sub.StatusTypes)
 
 		// Create context for the operation
@@ -64,7 +64,7 @@ func startMissionSubscription(sub *MissionSubscription, sm *SubscriptionManager,
 		if len(sub.StatusTypes) > 0 {
 			statusTypesText = strings.Join(sub.StatusTypes, ", ")
 		}
-		sb.WriteString(fmt.Sprintf("\n\n*This is an automated update for mission statuses: %s. Updates every %d seconds.*", 
+		sb.WriteString(fmt.Sprintf("\n\n*This is an automated update for mission statuses: %s. Updates every %d seconds.*",
 			statusTypesText, sub.UpdateFrequency))
 
 		// Send to Mattermost with the subscription's channel ID
@@ -111,7 +111,7 @@ func restartSubscriptions(sm *SubscriptionManager, mm *MissionManager, client *C
 func notifySubscribersOfStatusChange(mission *Mission, oldStatus string, sm *SubscriptionManager, client *Client) {
 	// Find all subscriptions that care about this status change
 	subs := sm.GetSubscriptionsForStatus(mission.Status)
-	
+
 	if len(subs) == 0 {
 		log.Printf("No subscriptions found for status: %s", mission.Status)
 		return
@@ -124,7 +124,7 @@ func notifySubscribersOfStatusChange(mission *Mission, oldStatus string, sm *Sub
 		"**Departure:** %s\n"+
 		"**Arrival:** %s\n\n"+
 		"[View Mission Channel](~%s)",
-		mission.Name, mission.Callsign, oldStatus, mission.Status, 
+		mission.Name, mission.Callsign, oldStatus, mission.Status,
 		mission.DepartureAirport, mission.ArrivalAirport, mission.ChannelName)
 
 	// Create context for the operation
@@ -137,7 +137,7 @@ func notifySubscribersOfStatusChange(mission *Mission, oldStatus string, sm *Sub
 			continue
 		}
 
-		log.Printf("Sending status change notification to channel ID: %s for subscription %s", 
+		log.Printf("Sending status change notification to channel ID: %s for subscription %s",
 			sub.ChannelID, sub.ID)
 		_, err := SendPost(ctx, client, sub.ChannelID, statusChangeMsg)
 		if err != nil {

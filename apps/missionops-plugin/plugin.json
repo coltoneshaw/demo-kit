@@ -1,0 +1,20 @@
+{
+    "id": "com.coltoneshaw.missionops",
+    "name": "Mission Operations",
+    "description": "Mission Operations plugin for planning and tracking missions",
+    "version": "0.1.0",
+    "icon_path": "assets/bot_icon.png",
+    "min_server_version": "10.7.0",
+    "server": {
+        "executables": {
+            "linux-amd64": "server/dist/plugin-linux-amd64",
+            "linux-arm64": "server/dist/plugin-linux-arm64",
+            "darwin-amd64": "server/dist/plugin-darwin-amd64",
+            "darwin-arm64": "server/dist/plugin-darwin-arm64"
+        }
+    },
+    "settings_schema": {
+        "header": "Configure the Mission Operations plugin.",
+        "footer": "Use this plugin to track and manage missions across your organization."
+    }
+}
