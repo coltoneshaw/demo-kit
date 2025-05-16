@@ -162,17 +162,17 @@ services:
     depends_on:
       - mattermost
       
-  missionops-app:
-    container_name: missionops-app
-    build:
-      context: ./apps/missionops
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8087:8087"
-    env_file:
-      - ./files/env_vars.env
-    volumes:
-      - ./volumes/apps/missionops:/app/data
-    depends_on:
-      - mattermost
+  # missionops-app:
+  #   container_name: missionops-app
+  #   build:
+  #     context: ./apps/missionops
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8087:8087"
+  #   env_file:
+  #     - ./files/env_vars.env
+  #   volumes:
+  #     - ./volumes/apps/missionops:/app/data
+  #   depends_on:
+  #     - mattermost

@@ -23,7 +23,7 @@ restore-keycloak:
 
 build-apps:
 	@echo "Building app containers..."
-	@docker-compose build weather-app flightaware-app missionops-app
+	@docker-compose build weather-app flightaware-app
 	@echo "App containers built successfully"
 
 run: 
@@ -57,7 +57,7 @@ run-core:
 
 run-integrations:
 	@echo "Starting the integrations..."
-	@docker-compose up -d --build weather-app flightaware-app missionops-app
+	@docker-compose up -d --build weather-app flightaware-app
 
 run-rtcd:
 	@echo "Starting RTCD..."
