@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -63,7 +62,13 @@ func (ws *WeatherService) GetWeatherData(location string) (*WeatherResponse, err
 	weatherValues := ws.weatherData[randomIndex]
 	
 	// Create a WeatherResponse with the user's requested location
-	weatherResponse := &WeatherResponse{
+	weatherResponse := ws.buildWeatherResponse(weatherValues, location)
+	
+	return weatherResponse, nil
+}
+
+func (ws *WeatherService) buildWeatherResponse(values WeatherValues, location string) *WeatherResponse {
+	return &WeatherResponse{
 		Data: struct {
 			Time   string `json:"time"`
 			Values struct {
@@ -79,30 +84,8 @@ func (ws *WeatherService) GetWeatherData(location string) (*WeatherResponse, err
 				WeatherCode              int     `json:"weatherCode"`
 			} `json:"values"`
 		}{
-			Time: time.Now().Format(time.RFC3339),
-			Values: struct {
-				Temperature              float64 `json:"temperature"`
-				TemperatureApparent      float64 `json:"temperatureApparent"`
-				Humidity                 int     `json:"humidity"`
-				PrecipitationProbability int     `json:"precipitationProbability"`
-				RainIntensity            float64 `json:"rainIntensity"`
-				WindSpeed                float64 `json:"windSpeed"`
-				WindGust                 float64 `json:"windGust"`
-				WindDirection            int     `json:"windDirection"`
-				CloudCover               int     `json:"cloudCover"`
-				WeatherCode              int     `json:"weatherCode"`
-			}{
-				Temperature:              weatherValues.Temperature,
-				TemperatureApparent:      weatherValues.TemperatureApparent,
-				Humidity:                 weatherValues.Humidity,
-				PrecipitationProbability: weatherValues.PrecipitationProbability,
-				RainIntensity:            weatherValues.RainIntensity,
-				WindSpeed:                weatherValues.WindSpeed,
-				WindGust:                 weatherValues.WindGust,
-				WindDirection:            weatherValues.WindDirection,
-				CloudCover:               weatherValues.CloudCover,
-				WeatherCode:              weatherValues.WeatherCode,
-			},
+			Time:   time.Now().Format(time.RFC3339),
+			Values: values,
 		},
 		Location: struct {
 			Lat  float64 `json:"lat"`
@@ -110,46 +93,11 @@ func (ws *WeatherService) GetWeatherData(location string) (*WeatherResponse, err
 			Name string  `json:"name"`
 			Type string  `json:"type"`
 		}{
-			Lat:  0,  // Not used anymore
-			Lon:  0,  // Not used anymore
+			Lat:  0,
+			Lon:  0,
 			Name: location,
 			Type: "city",
 		},
 	}
-	
-	return weatherResponse, nil
 }
 
-func (ws *WeatherService) FormatWeatherResponse(data *WeatherResponse) string {
-	description, exists := WeatherCodeDescription[data.Data.Values.WeatherCode]
-	if !exists {
-		description = "Unknown"
-	}
-
-	var windDirection string
-	windDir := data.Data.Values.WindDirection
-	directions := []string{"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"}
-	index := int((float64(windDir)+11.25)/22.5) % 16
-	windDirection = directions[index]
-
-	locationDisplay := data.Location.Name
-	if locationDisplay == "" {
-		locationDisplay = fmt.Sprintf("%.2f,%.2f", data.Location.Lat, data.Location.Lon)
-	}
-
-	weatherText := fmt.Sprintf("🌤️ **Weather for %s**\n\n", locationDisplay)
-	weatherText += fmt.Sprintf("**Condition:** %s\n", description)
-	weatherText += fmt.Sprintf("**Temperature:** %.1f°C (feels like %.1f°C)\n",
-		data.Data.Values.Temperature, data.Data.Values.TemperatureApparent)
-	weatherText += fmt.Sprintf("**Humidity:** %d%%\n", data.Data.Values.Humidity)
-	weatherText += fmt.Sprintf("**Wind:** %.1f km/h %s (gusts up to %.1f km/h)\n",
-		data.Data.Values.WindSpeed, windDirection, data.Data.Values.WindGust)
-	weatherText += fmt.Sprintf("**Cloud Cover:** %d%%\n", data.Data.Values.CloudCover)
-	weatherText += fmt.Sprintf("**Precipitation Chance:** %d%%\n", data.Data.Values.PrecipitationProbability)
-
-	if data.Data.Values.RainIntensity > 0 {
-		weatherText += fmt.Sprintf("**Rain Intensity:** %.1f mm/h\n", data.Data.Values.RainIntensity)
-	}
-
-	return strings.TrimSpace(weatherText)
-}

@@ -2,21 +2,30 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
+	"time"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
 )
 
 type SubscriptionManager struct {
-	client        *pluginapi.Client
-	subscriptions map[string]*Subscription
-	mutex         sync.RWMutex
+	client         *pluginapi.Client
+	subscriptions  map[string]*Subscription
+	mutex          sync.RWMutex
+	weatherService *WeatherService
+	formatter      *WeatherFormatter
+	messageService *MessageService
 }
 
-func NewSubscriptionManager(client *pluginapi.Client) *SubscriptionManager {
+func NewSubscriptionManager(client *pluginapi.Client, weatherService *WeatherService, formatter *WeatherFormatter, messageService *MessageService) *SubscriptionManager {
 	sm := &SubscriptionManager{
-		client:        client,
-		subscriptions: make(map[string]*Subscription),
+		client:         client,
+		subscriptions:  make(map[string]*Subscription),
+		weatherService: weatherService,
+		formatter:      formatter,
+		messageService: messageService,
 	}
 	
 	sm.loadSubscriptions()
@@ -80,6 +89,79 @@ func (sm *SubscriptionManager) GetAllSubscriptions() []*Subscription {
 }
 
 
+
+func (sm *SubscriptionManager) StartSubscription(sub *Subscription) {
+	// Get initial weather data
+	weatherData, err := sm.weatherService.GetWeatherData(sub.Location)
+	if err != nil {
+		sm.client.Log.Error("Error fetching initial weather data for subscription", "error", err, "subscription_id", sub.ID)
+		errorMsg := fmt.Sprintf("⚠️ Could not fetch weather data for subscription to **%s** (ID: `%s`): %v", sub.Location, sub.ID, err)
+		
+		args := &model.CommandArgs{
+			ChannelId: sub.ChannelID,
+			UserId: sub.UserID,
+		}
+		sm.messageService.SendEphemeralResponse(args, errorMsg)
+	} else {
+		post := sm.formatter.FormatAsAttachment(weatherData, sub.ChannelID, sm.messageService.GetBotUserID())
+		args := &model.CommandArgs{
+			ChannelId: sub.ChannelID,
+			UserId: sub.UserID,
+		}
+		sm.messageService.SendPublicResponse(args, post)
+	}
+
+	ticker := time.NewTicker(time.Duration(sub.UpdateFrequency) * time.Millisecond)
+	defer ticker.Stop()
+
+	consecutiveFailures := 0
+	maxConsecutiveFailures := 5
+
+	for {
+		select {
+		case <-ticker.C:
+			weatherData, err := sm.weatherService.GetWeatherData(sub.Location)
+
+			if err != nil {
+				consecutiveFailures++
+				sm.client.Log.Error("Error fetching weather data for subscription", "error", err, "subscription_id", sub.ID, "failures", consecutiveFailures)
+
+				if consecutiveFailures == 1 || consecutiveFailures == maxConsecutiveFailures {
+					errorMsg := fmt.Sprintf("⚠️ Error updating weather for **%s**: %v", sub.Location, err)
+					args := &model.CommandArgs{
+						ChannelId: sub.ChannelID,
+						UserId: sub.UserID,
+					}
+					sm.messageService.SendEphemeralResponse(args, errorMsg)
+				}
+
+				if consecutiveFailures >= maxConsecutiveFailures {
+					ticker.Reset(time.Duration(sub.UpdateFrequency*2) * time.Millisecond)
+				}
+				continue
+			}
+
+			if consecutiveFailures > 0 {
+				sm.client.Log.Info("Successfully recovered subscription after failures", "subscription_id", sub.ID, "failures", consecutiveFailures)
+				consecutiveFailures = 0
+				ticker.Reset(time.Duration(sub.UpdateFrequency) * time.Millisecond)
+			}
+
+			post := sm.formatter.FormatAsAttachment(weatherData, sub.ChannelID, sm.messageService.GetBotUserID())
+			args := &model.CommandArgs{
+				ChannelId: sub.ChannelID,
+				UserId: sub.UserID,
+			}
+			sm.messageService.SendPublicResponse(args, post)
+
+			sub.LastUpdated = time.Now()
+
+		case <-sub.StopChan:
+			sm.client.Log.Info("Stopping subscription", "subscription_id", sub.ID)
+			return
+		}
+	}
+}
 
 func (sm *SubscriptionManager) StopAll() {
 	sm.mutex.Lock()

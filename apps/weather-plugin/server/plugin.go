@@ -19,6 +19,8 @@ type Plugin struct {
 	weatherService      *WeatherService
 	subscriptionManager *SubscriptionManager
 	commandHandler      *CommandHandler
+	formatter           *WeatherFormatter
+	messageService      *MessageService
 	botUserID           string
 }
 
@@ -39,8 +41,10 @@ func (p *Plugin) OnActivate() error {
 	p.botUserID = botUserID
 
 	p.weatherService = NewWeatherService(bundlePath)
-	p.subscriptionManager = NewSubscriptionManager(p.client)
-	p.commandHandler = NewCommandHandler(p.client, p.weatherService, p.subscriptionManager, p.botUserID)
+	p.formatter = NewWeatherFormatter()
+	p.messageService = NewMessageService(p.client, p.botUserID)
+	p.subscriptionManager = NewSubscriptionManager(p.client, p.weatherService, p.formatter, p.messageService)
+	p.commandHandler = NewCommandHandler(p.client, p.weatherService, p.subscriptionManager, p.formatter, p.messageService)
 
 	p.client.Log.Info("Weather plugin activated", "bundle_path", bundlePath, "bot_user_id", p.botUserID)
 	return nil
