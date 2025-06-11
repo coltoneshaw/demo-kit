@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"sync"
 
 	"github.com/mattermost/mattermost/server/public/pluginapi"
@@ -12,16 +11,12 @@ type SubscriptionManager struct {
 	client        *pluginapi.Client
 	subscriptions map[string]*Subscription
 	mutex         sync.RWMutex
-	HourlyLimit   int
-	DailyLimit    int
 }
 
 func NewSubscriptionManager(client *pluginapi.Client) *SubscriptionManager {
 	sm := &SubscriptionManager{
 		client:        client,
 		subscriptions: make(map[string]*Subscription),
-		HourlyLimit:   25,
-		DailyLimit:    500,
 	}
 	
 	sm.loadSubscriptions()
@@ -84,54 +79,7 @@ func (sm *SubscriptionManager) GetAllSubscriptions() []*Subscription {
 	return subs
 }
 
-func (sm *SubscriptionManager) CalculateAPIUsage() (hourlyUsage, dailyUsage int) {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
-	
-	for _, sub := range sm.subscriptions {
-		requestsPerHour := 3600000 / sub.UpdateFrequency
-		if requestsPerHour < 1 {
-			requestsPerHour = 1
-		}
-		hourlyUsage += int(requestsPerHour)
-		
-		requestsPerDay := 86400000 / sub.UpdateFrequency
-		if requestsPerDay < 1 {
-			requestsPerDay = 1
-		}
-		dailyUsage += int(requestsPerDay)
-	}
-	
-	return hourlyUsage, dailyUsage
-}
 
-func (sm *SubscriptionManager) CheckSubscriptionLimits(updateFrequency int64) (bool, string) {
-	currentHourlyUsage, currentDailyUsage := sm.CalculateAPIUsage()
-	
-	newHourlyUsage := 3600000 / updateFrequency
-	if newHourlyUsage < 1 {
-		newHourlyUsage = 1
-	}
-	
-	newDailyUsage := 86400000 / updateFrequency
-	if newDailyUsage < 1 {
-		newDailyUsage = 1
-	}
-	
-	if currentHourlyUsage+int(newHourlyUsage) > sm.HourlyLimit {
-		return false, fmt.Sprintf(
-			"Adding this subscription would exceed the hourly API limit of %d requests. Current usage: %d, New subscription would add: %d requests per hour.",
-			sm.HourlyLimit, currentHourlyUsage, newHourlyUsage)
-	}
-	
-	if currentDailyUsage+int(newDailyUsage) > sm.DailyLimit {
-		return false, fmt.Sprintf(
-			"Adding this subscription would exceed the daily API limit of %d requests. Current usage: %d, New subscription would add: %d requests per day.",
-			sm.DailyLimit, currentDailyUsage, newDailyUsage)
-	}
-	
-	return true, ""
-}
 
 func (sm *SubscriptionManager) StopAll() {
 	sm.mutex.Lock()

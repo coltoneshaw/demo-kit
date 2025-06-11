@@ -38,12 +38,7 @@ func (p *Plugin) OnActivate() error {
 	}
 	p.botUserID = botUserID
 
-	config := p.getConfiguration()
-	if config.TomorrowAPIKey == "" {
-		p.client.Log.Warn("Tomorrow.io API key not configured")
-	}
-
-	p.weatherService = NewWeatherService(config.TomorrowAPIKey)
+	p.weatherService = NewWeatherService(bundlePath)
 	p.subscriptionManager = NewSubscriptionManager(p.client)
 	p.commandHandler = NewCommandHandler(p.client, p.weatherService, p.subscriptionManager, p.botUserID)
 
@@ -79,23 +74,9 @@ func (p *Plugin) OnConfigurationChange() error {
 
 	p.setConfiguration(configuration)
 
-	if p.weatherService != nil {
-		p.weatherService.UpdateAPIKey(configuration.TomorrowAPIKey)
-	}
-
 	return nil
 }
 
-func (p *Plugin) getConfiguration() *configuration {
-	p.configurationLock.RLock()
-	defer p.configurationLock.RUnlock()
-
-	if p.configuration == nil {
-		return &configuration{}
-	}
-
-	return p.configuration
-}
 
 func (p *Plugin) setConfiguration(configuration *configuration) {
 	p.configurationLock.Lock()

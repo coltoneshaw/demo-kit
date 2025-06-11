@@ -60,10 +60,6 @@ func NewCommandHandler(client *pluginapi.Client, weatherService *WeatherService,
 					},
 				},
 				{
-					Trigger:  "limits",
-					HelpText: "Show API usage limits",
-				},
-				{
 					Trigger:  "subscribe",
 					HelpText: "Subscribe to weather updates",
 					Arguments: []*model.AutocompleteArg{
@@ -113,15 +109,45 @@ func NewCommandHandler(client *pluginapi.Client, weatherService *WeatherService,
 	return handler
 }
 
-// postBotMessage posts a message from the bot
-func (ch *CommandHandler) postBotMessage(channelID, message string, isEphemeral bool) *model.Post {
-	post := &model.Post{
-		ChannelId: channelID,
-		Message:   message,
-		UserId:    ch.botUserID,
+func (ch *CommandHandler) Handle(args *model.CommandArgs) (*model.CommandResponse, error) {
+	split := strings.Fields(args.Command)
+	if len(split) < 2 {
+		return ch.executeHelpCommand(args)
 	}
+
+	command := split[1]
+	switch command {
+	case "help", "--help":
+		return ch.executeHelpCommand(args)
+	case "list":
+		return ch.executeListCommand(args)
+	case "subscribe":
+		return ch.executeSubscribeCommand(args)
+	case "unsubscribe":
+		return ch.executeUnsubscribeCommand(args)
+	default:
+		// Treat as location for regular weather request
+		location := strings.Join(split[1:], " ")
+		return ch.executeWeatherCommand(args, location)
+	}
+}
+
+// postBotResponse posts a message from the bot and returns an empty ephemeral response
+func (ch *CommandHandler) commandResponsePost(post *model.Post, userID string, isEphemeral bool) (*model.CommandResponse, error) {
+	ch.sendBotPost(post, userID, isEphemeral)
+
+	return &model.CommandResponse{
+		ResponseType: model.CommandResponseTypeEphemeral,
+		Text:         "",
+	}, nil
+}
+
+// postBotMessage posts a message from the bot
+func (ch *CommandHandler) sendBotPost(post *model.Post, userID string, isEphemeral bool) *model.Post {
+	post.UserId = ch.botUserID
+
 	if isEphemeral {
-		ch.client.Post.SendEphemeralPost(ch.botUserID, post)
+		ch.client.Post.SendEphemeralPost(userID, post)
 		return post
 	}
 
@@ -130,7 +156,7 @@ func (ch *CommandHandler) postBotMessage(channelID, message string, isEphemeral 
 }
 
 // postWeatherMessage posts a weather message with rich formatting using attachments
-func (ch *CommandHandler) postWeatherMessage(channelID string, weatherData *WeatherResponse, isEphemeral bool) *model.Post {
+func (ch *CommandHandler) formatWeatherMessage(userID, channelID string, weatherData *WeatherResponse) *model.Post {
 	locationDisplay := weatherData.Location.Name
 	if locationDisplay == "" {
 		locationDisplay = fmt.Sprintf("%.2f,%.2f", weatherData.Location.Lat, weatherData.Location.Lon)
@@ -225,117 +251,70 @@ func (ch *CommandHandler) postWeatherMessage(channelID string, weatherData *Weat
 	post := &model.Post{
 		ChannelId: channelID,
 		UserId:    ch.botUserID,
-		Props: map[string]interface{}{
+		Props: map[string]any{
 			"attachments": []*model.SlackAttachment{attachment},
 		},
 	}
 
-	if isEphemeral {
-		ch.client.Post.SendEphemeralPost(ch.botUserID, post)
-		return post
-	}
-
-	ch.client.Post.CreatePost(post)
 	return post
 }
 
-// postBotResponse posts a message from the bot and returns an empty ephemeral response
-func (ch *CommandHandler) postBotResponse(channelID, message string, isEphemeral bool) (*model.CommandResponse, error) {
-	ch.postBotMessage(channelID, message, isEphemeral)
-
-	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeEphemeral,
-		Text:         "",
-	}, nil
-}
-
-// postWeatherResponse posts a weather message with rich formatting and returns an empty ephemeral response
-func (ch *CommandHandler) postWeatherResponse(channelID string, weatherData *WeatherResponse) (*model.CommandResponse, error) {
-	ch.postWeatherMessage(channelID, weatherData, false)
-
-	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeEphemeral,
-		Text:         "",
-	}, nil
-}
-
-func (ch *CommandHandler) Handle(args *model.CommandArgs) (*model.CommandResponse, error) {
-	split := strings.Fields(args.Command)
-	if len(split) < 2 {
-		return ch.executeHelpCommand()
-	}
-
-	command := split[1]
-	switch command {
-	case "help", "--help":
-		return ch.executeHelpCommand()
-	case "list":
-		return ch.executeListCommand(args)
-	case "limits":
-		return ch.executeLimitsCommand()
-	case "subscribe":
-		return ch.executeSubscribeCommand(args)
-	case "unsubscribe":
-		return ch.executeUnsubscribeCommand(args)
-	default:
-		// Treat as location for regular weather request
-		location := strings.Join(split[1:], " ")
-		return ch.executeWeatherCommand(args, location)
-	}
-}
-
-func (ch *CommandHandler) executeHelpCommand() (*model.CommandResponse, error) {
+func (ch *CommandHandler) executeHelpCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
 	helpText := "**Weather Bot Commands**\n\n" +
 		"**Basic Commands:**\n" +
 		"- `/weather <location>` - Get current weather for a location\n" +
 		"- `/weather help` - Show this help message\n" +
-		"- `/weather limits` - Show API usage limits and current usage\n" +
 		"- `/weather list` - List active subscriptions in this channel\n" +
 		"- `/weather list --all` - List all subscriptions on the server\n\n" +
 		"**Subscription Commands:**\n" +
 		"- `/weather subscribe --location <location> --frequency <frequency>` - Subscribe to weather updates\n" +
 		"- `/weather unsubscribe <subscription_id>` - Unsubscribe from specific weather updates\n\n" +
 		"**Parameters:**\n" +
-		"- `location` - City name, zip code, or coordinates (e.g., 'New York', '10001', '40.7128,-74.0060')\n" +
+		"- `location` - Any location name (returns random weather data)\n" +
 		"- `frequency` - How often to send updates in milliseconds (e.g., 3600000 for hourly) or duration (e.g., 1h, 30m)\n\n" +
 		"**Examples:**\n" +
 		"- `/weather London` - Get current weather for London\n" +
 		"- `/weather subscribe --location Tokyo --frequency 1h` - Get hourly weather updates for Tokyo\n" +
 		"- `/weather subscribe --location \"New York\" --frequency 30m` - Get updates every 30 minutes for New York"
 
-	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeEphemeral,
-		Text:         helpText,
-	}, nil
+	post := &model.Post{
+		ChannelId: args.ChannelId,
+		Message:   helpText,
+	}
+
+	return ch.commandResponsePost(post, args.UserId, true)
+
 }
 
 func (ch *CommandHandler) executeWeatherCommand(args *model.CommandArgs, location string) (*model.CommandResponse, error) {
 	if location == "" {
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         "Please provide a location. Example: `/weather New York` or use `/weather help` for more commands.",
-		}, nil
+		return ch.commandResponsePost(&model.Post{
+			ChannelId: args.ChannelId,
+			Message:   "Please provide a location. Example: `/weather New York` or use `/weather help` for more commands.",
+		}, args.UserId, true)
 	}
 
 	weatherData, err := ch.weatherService.GetWeatherData(location)
 	if err != nil {
 		ch.client.Log.Error("Error fetching weather data", "error", err, "location", location)
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         fmt.Sprintf("Error fetching weather data: %v", err),
-		}, nil
+		return ch.commandResponsePost(&model.Post{
+			ChannelId: args.ChannelId,
+			Message:   fmt.Sprintf("Error fetching weather data: %v", err),
+		}, args.UserId, true)
 	}
 
-	return ch.postWeatherResponse(args.ChannelId, weatherData)
+	post := ch.formatWeatherMessage(args.UserId, args.ChannelId, weatherData)
+
+	return ch.commandResponsePost(post, args.UserId, false)
 }
 
 func (ch *CommandHandler) executeListCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
 	split := strings.Fields(args.Command)
 	showAll := len(split) > 2 && split[2] == "--all"
-	
+
 	var subs []*Subscription
 	var title string
-	
+
 	if showAll {
 		subs = ch.subscriptionManager.GetAllSubscriptions()
 		title = "**All Weather Subscriptions on Server:**"
@@ -343,7 +322,7 @@ func (ch *CommandHandler) executeListCommand(args *model.CommandArgs) (*model.Co
 		subs = ch.subscriptionManager.GetSubscriptionsForChannel(args.ChannelId)
 		title = "**Active Weather Subscriptions in this Channel:**"
 	}
-	
+
 	if len(subs) == 0 {
 		message := "No active weather subscriptions found"
 		if showAll {
@@ -351,19 +330,20 @@ func (ch *CommandHandler) executeListCommand(args *model.CommandArgs) (*model.Co
 		} else {
 			message += " in this channel."
 		}
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         message,
-		}, nil
+
+		return ch.commandResponsePost(&model.Post{
+			ChannelId: args.ChannelId,
+			Message:   message,
+		}, args.UserId, true)
 	}
 
 	var subList strings.Builder
 	subList.WriteString(title + "\n\n")
-	
+
 	if showAll {
 		subList.WriteString("| ID | Location | Channel | Frequency | Last Updated |\n")
 		subList.WriteString("|---|---------|---------|-----------|-------------|\n")
-		
+
 		for _, sub := range subs {
 			// Get channel name for display
 			channel, err := ch.client.Channel.Get(sub.ChannelID)
@@ -374,14 +354,14 @@ func (ch *CommandHandler) executeListCommand(args *model.CommandArgs) (*model.Co
 					channelName = channel.Name
 				}
 			}
-			
+
 			subList.WriteString(fmt.Sprintf("| `%s` | %s | %s | %d ms | %s |\n",
 				sub.ID, sub.Location, channelName, sub.UpdateFrequency, sub.LastUpdated.Format(time.RFC1123)))
 		}
 	} else {
 		subList.WriteString("| ID | Location | Frequency | Last Updated |\n")
 		subList.WriteString("|---|---------|-----------|-------------|\n")
-		
+
 		for _, sub := range subs {
 			subList.WriteString(fmt.Sprintf("| `%s` | %s | %d ms | %s |\n",
 				sub.ID, sub.Location, sub.UpdateFrequency, sub.LastUpdated.Format(time.RFC1123)))
@@ -390,29 +370,10 @@ func (ch *CommandHandler) executeListCommand(args *model.CommandArgs) (*model.Co
 
 	subList.WriteString("\nTo unsubscribe, use: `/weather unsubscribe SUBSCRIPTION_ID`")
 
-	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeEphemeral,
-		Text:         subList.String(),
-	}, nil
-}
-
-func (ch *CommandHandler) executeLimitsCommand() (*model.CommandResponse, error) {
-	hourlyUsage, dailyUsage := ch.subscriptionManager.CalculateAPIUsage()
-
-	limitsText := fmt.Sprintf("**Weather API Usage Limits**\n\n"+
-		"**Current Usage:**\n"+
-		"- Hourly: %d/%d requests (%d%% used)\n"+
-		"- Daily: %d/%d requests (%d%% used)\n\n"+
-		"**Active Subscriptions:** %d\n\n"+
-		"Use `/weather subscribe <location> <frequency>` to create a new subscription.",
-		hourlyUsage, ch.subscriptionManager.HourlyLimit, (hourlyUsage*100)/ch.subscriptionManager.HourlyLimit,
-		dailyUsage, ch.subscriptionManager.DailyLimit, (dailyUsage*100)/ch.subscriptionManager.DailyLimit,
-		len(ch.subscriptionManager.subscriptions))
-
-	return &model.CommandResponse{
-		ResponseType: model.CommandResponseTypeEphemeral,
-		Text:         limitsText,
-	}, nil
+	return ch.commandResponsePost(&model.Post{
+		ChannelId: args.ChannelId,
+		Message:   subList.String(),
+	}, args.UserId, true)
 }
 
 func (ch *CommandHandler) executeSubscribeCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
@@ -452,10 +413,11 @@ func (ch *CommandHandler) executeSubscribeCommand(args *model.CommandArgs) (*mod
 
 	// Check if we have both required parameters
 	if location == "" || frequencyStr == "" {
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         "Usage: `/weather subscribe --location <location> --frequency <frequency>` or `/weather subscribe <location> <frequency>`. Example: `/weather subscribe --location \"New York\" --frequency 1h`",
-		}, nil
+		return ch.commandResponsePost(&model.Post{
+			ChannelId: args.ChannelId,
+			Message:   "Usage: `/weather subscribe --location <location> --frequency <frequency>` or `/weather subscribe <location> <frequency>`. Example: `/weather subscribe --location \"New York\" --frequency 1h`",
+		}, args.UserId, true)
+
 	}
 
 	var updateFrequency int64
@@ -467,29 +429,20 @@ func (ch *CommandHandler) executeSubscribeCommand(args *model.CommandArgs) (*mod
 		// Try to parse as duration
 		duration, err := time.ParseDuration(frequencyStr)
 		if err != nil {
-			return &model.CommandResponse{
-				ResponseType: model.CommandResponseTypeEphemeral,
-				Text:         fmt.Sprintf("Invalid frequency: %s. Please use milliseconds (e.g., 60000 for 1 minute) or a valid duration like 30s, 5m, 1h", frequencyStr),
-			}, nil
+			return ch.commandResponsePost(&model.Post{
+				ChannelId: args.ChannelId,
+				Message:   fmt.Sprintf("Invalid frequency: %s. Please use milliseconds (e.g., 60000 for 1 minute) or a valid duration like 30s, 5m, 1h", frequencyStr),
+			}, args.UserId, true)
 		}
 		updateFrequency = duration.Milliseconds()
 	}
 
 	// Validate minimum frequency (30 seconds)
 	if updateFrequency < 30000 {
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         "Update frequency must be at least 30000 milliseconds (30 seconds).",
-		}, nil
-	}
-
-	// Check API limits
-	withinLimits, limitMessage := ch.subscriptionManager.CheckSubscriptionLimits(updateFrequency)
-	if !withinLimits {
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         limitMessage,
-		}, nil
+		return ch.commandResponsePost(&model.Post{
+			ChannelId: args.ChannelId,
+			Message:   "Update frequency must be at least 30000 milliseconds (30 seconds).",
+		}, args.UserId, true)
 	}
 
 	// Create subscription
@@ -510,16 +463,21 @@ func (ch *CommandHandler) executeSubscribeCommand(args *model.CommandArgs) (*mod
 	go ch.startSubscription(subscription)
 
 	confirmationMsg := fmt.Sprintf("✅ Subscribed to weather updates for **%s**. Updates will be sent every %d ms (ID: `%s`).", location, updateFrequency, subID)
-	return ch.postBotResponse(args.ChannelId, confirmationMsg, false)
+	post := &model.Post{
+		ChannelId: args.ChannelId,
+		Message:   confirmationMsg,
+	}
+	return ch.commandResponsePost(post, args.UserId, false)
 }
 
 func (ch *CommandHandler) executeUnsubscribeCommand(args *model.CommandArgs) (*model.CommandResponse, error) {
 	split := strings.Fields(args.Command)
+	post := &model.Post{
+		ChannelId: args.ChannelId,
+	}
 	if len(split) < 3 {
-		return &model.CommandResponse{
-			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         "Usage: `/weather unsubscribe <subscription_id>`. Use `/weather list` to see your subscriptions.",
-		}, nil
+		post.Message = "Usage: `/weather unsubscribe <subscription_id>`. Use `/weather list` to see your subscriptions."
+		return ch.commandResponsePost(post, args.UserId, true)
 	}
 
 	subscriptionID := split[2]
@@ -527,25 +485,32 @@ func (ch *CommandHandler) executeUnsubscribeCommand(args *model.CommandArgs) (*m
 	if sub, exists := ch.subscriptionManager.GetSubscription(subscriptionID); exists {
 		location := sub.Location
 		if ch.subscriptionManager.RemoveSubscription(subscriptionID) {
-			confirmationMsg := fmt.Sprintf("✅ Unsubscribed from weather updates for **%s** (ID: `%s`).", location, subscriptionID)
-			return ch.postBotResponse(args.ChannelId, confirmationMsg, false)
+			post.Message = fmt.Sprintf("✅ Unsubscribed from weather updates for **%s** (ID: `%s`).", location, subscriptionID)
+			return ch.commandResponsePost(post, args.UserId, false)
 		}
 	}
 
-	return ch.postBotResponse(args.ChannelId, fmt.Sprintf("No subscription found with ID: %s", subscriptionID), true)
+	post.Message = fmt.Sprintf("No subscription found with ID: %s", subscriptionID)
+	return ch.commandResponsePost(post, args.UserId, false)
 
 }
 
 func (ch *CommandHandler) startSubscription(sub *Subscription) {
 	// Get initial weather data
 	weatherData, err := ch.weatherService.GetWeatherData(sub.Location)
+	post := &model.Post{
+		ChannelId: sub.ChannelID,
+	}
 	if err != nil {
 		ch.client.Log.Error("Error fetching initial weather data for subscription", "error", err, "subscription_id", sub.ID)
-		errorMsg := fmt.Sprintf("⚠️ Could not fetch weather data for subscription to **%s** (ID: `%s`): %v",
+		post.Message = fmt.Sprintf(
+			"⚠️ Could not fetch weather data for subscription to **%s** (ID: `%s`): %v",
 			sub.Location, sub.ID, err)
-		ch.postBotMessage(sub.ChannelID, errorMsg, false)
+		ch.commandResponsePost(post, sub.UserID, true)
 	} else {
-		ch.postWeatherMessage(sub.ChannelID, weatherData, false)
+		post := ch.formatWeatherMessage(sub.UserID, sub.ChannelID, weatherData)
+
+		ch.commandResponsePost(post, sub.UserID, false)
 	}
 
 	ticker := time.NewTicker(time.Duration(sub.UpdateFrequency) * time.Millisecond)
@@ -558,13 +523,17 @@ func (ch *CommandHandler) startSubscription(sub *Subscription) {
 		select {
 		case <-ticker.C:
 			weatherData, err := ch.weatherService.GetWeatherData(sub.Location)
+
 			if err != nil {
 				consecutiveFailures++
 				ch.client.Log.Error("Error fetching weather data for subscription", "error", err, "subscription_id", sub.ID, "failures", consecutiveFailures)
 
 				if consecutiveFailures == 1 || consecutiveFailures == maxConsecutiveFailures {
-					errorMsg := fmt.Sprintf("⚠️ Error updating weather for **%s**: %v", sub.Location, err)
-					ch.postBotMessage(sub.ChannelID, errorMsg, false)
+					post := &model.Post{
+						ChannelId: sub.ChannelID,
+					}
+					post.Message = fmt.Sprintf("⚠️ Error updating weather for **%s**: %v", sub.Location, err)
+					ch.commandResponsePost(post, sub.UserID, true)
 				}
 
 				if consecutiveFailures >= maxConsecutiveFailures {
@@ -579,7 +548,9 @@ func (ch *CommandHandler) startSubscription(sub *Subscription) {
 				ticker.Reset(time.Duration(sub.UpdateFrequency) * time.Millisecond)
 			}
 
-			ch.postWeatherMessage(sub.ChannelID, weatherData, false)
+			post = ch.formatWeatherMessage(sub.UserID, sub.ChannelID, weatherData)
+
+			ch.commandResponsePost(post, sub.UserID, false)
 
 			sub.LastUpdated = time.Now()
 

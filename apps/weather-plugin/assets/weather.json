@@ -1,0 +1,122 @@
+[
+  {
+    "temperature": 22.5,
+    "temperatureApparent": 24.1,
+    "humidity": 65,
+    "precipitationProbability": 20,
+    "rainIntensity": 0.0,
+    "windSpeed": 12.3,
+    "windGust": 18.7,
+    "windDirection": 180,
+    "cloudCover": 40,
+    "weatherCode": 1100
+  },
+  {
+    "temperature": 8.2,
+    "temperatureApparent": 5.5,
+    "humidity": 82,
+    "precipitationProbability": 75,
+    "rainIntensity": 2.3,
+    "windSpeed": 15.8,
+    "windGust": 25.2,
+    "windDirection": 225,
+    "cloudCover": 90,
+    "weatherCode": 4001
+  },
+  {
+    "temperature": 35.7,
+    "temperatureApparent": 38.9,
+    "humidity": 45,
+    "precipitationProbability": 5,
+    "rainIntensity": 0.0,
+    "windSpeed": 8.1,
+    "windGust": 12.4,
+    "windDirection": 90,
+    "cloudCover": 15,
+    "weatherCode": 1000
+  },
+  {
+    "temperature": -5.3,
+    "temperatureApparent": -12.1,
+    "humidity": 78,
+    "precipitationProbability": 85,
+    "rainIntensity": 0.0,
+    "windSpeed": 22.6,
+    "windGust": 35.1,
+    "windDirection": 315,
+    "cloudCover": 95,
+    "weatherCode": 5001
+  },
+  {
+    "temperature": 28.4,
+    "temperatureApparent": 31.2,
+    "humidity": 55,
+    "precipitationProbability": 10,
+    "rainIntensity": 0.0,
+    "windSpeed": 6.7,
+    "windGust": 9.8,
+    "windDirection": 45,
+    "cloudCover": 25,
+    "weatherCode": 1101
+  },
+  {
+    "temperature": 15.8,
+    "temperatureApparent": 13.2,
+    "humidity": 91,
+    "precipitationProbability": 40,
+    "rainIntensity": 0.8,
+    "windSpeed": 18.3,
+    "windGust": 28.9,
+    "windDirection": 270,
+    "cloudCover": 75,
+    "weatherCode": 4200
+  },
+  {
+    "temperature": 42.1,
+    "temperatureApparent": 45.6,
+    "humidity": 25,
+    "precipitationProbability": 0,
+    "rainIntensity": 0.0,
+    "windSpeed": 4.2,
+    "windGust": 7.1,
+    "windDirection": 135,
+    "cloudCover": 5,
+    "weatherCode": 1000
+  },
+  {
+    "temperature": 18.9,
+    "temperatureApparent": 19.8,
+    "humidity": 72,
+    "precipitationProbability": 60,
+    "rainIntensity": 0.0,
+    "windSpeed": 11.5,
+    "windGust": 16.2,
+    "windDirection": 200,
+    "cloudCover": 85,
+    "weatherCode": 1102
+  },
+  {
+    "temperature": 12.7,
+    "temperatureApparent": 10.3,
+    "humidity": 88,
+    "precipitationProbability": 95,
+    "rainIntensity": 4.7,
+    "windSpeed": 25.8,
+    "windGust": 42.3,
+    "windDirection": 285,
+    "cloudCover": 100,
+    "weatherCode": 8000
+  },
+  {
+    "temperature": 31.5,
+    "temperatureApparent": 34.8,
+    "humidity": 38,
+    "precipitationProbability": 15,
+    "rainIntensity": 0.0,
+    "windSpeed": 9.6,
+    "windGust": 14.1,
+    "windDirection": 60,
+    "cloudCover": 30,
+    "weatherCode": 1100
+  }
+]
