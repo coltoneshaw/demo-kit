@@ -1,3 +1,7 @@
+<div align="left">
+  <img src="assets/bot_icon.png" alt="Mission Operations Plugin Icon" width="128" height="128">
+</div>
+
 # Mattermost Mission Operations Plugin
 
 A Mattermost plugin for planning and tracking missions. This plugin allows users to create, track, and update mission statuses, and subscribe to mission updates.

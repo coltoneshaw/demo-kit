@@ -1,5 +1,9 @@
-# FlightAware Plugin
+<div align="left">
+  <img src="assets/bot_icon.png" alt="FlightAware Plugin Icon" width="128" height="128">
+</div>
 
+# FlightAware Plugin
+  
 A Mattermost plugin for tracking flight departures using fake flight data.
 
 ## Features

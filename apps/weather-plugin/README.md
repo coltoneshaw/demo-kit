@@ -1,3 +1,7 @@
+<div align="left">
+  <img src="assets/bot.png" alt="Weather Plugin Icon" width="128" height="128">
+</div>
+
 # Weather Plugin
 
 A Mattermost plugin for getting weather data and managing weather subscriptions using the Tomorrow.io API.
