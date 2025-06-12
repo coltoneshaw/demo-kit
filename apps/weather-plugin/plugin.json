@@ -16,15 +16,6 @@
     "settings_schema": {
         "header": "Configure the Weather plugin.",
         "footer": "Use this plugin to get weather data and manage weather subscriptions. The plugin will create a bot user named 'Weather Bot' (@weatherbot) to post weather information.",
-        "settings": [
-            {
-                "key": "tomorrow_api_key",
-                "display_name": "Tomorrow.io API Key",
-                "type": "text",
-                "help_text": "API key for Tomorrow.io weather service",
-                "placeholder": "Enter your Tomorrow.io API key",
-                "default": ""
-            }
-        ]
+        "settings": []
     }
 }

@@ -49,7 +49,7 @@ This is a demo kit for Mattermost with integrated weather and flight tracking ap
    - Provides weather data through API endpoints
    - Supports subscription-based weather updates
    - Integrates with Mattermost via webhooks
-   - Uses Tomorrow.io API for weather data
+   - Uses mock weather data for demonstration purposes
 
 3. **Flight App** (`/flightaware_app` directory)
    - Go-based microservice

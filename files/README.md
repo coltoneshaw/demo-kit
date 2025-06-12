@@ -4,22 +4,18 @@ This is a json example to build the advanced logs for Mattermost. This will incl
 
 ## Weather API
 
-The repository also includes a simple Go-based weather API in the `weather` directory that provides current weather information from the Tomorrow.io API.
+The repository also includes a simple Go-based weather API in the `weather` directory that provides weather information using mock data.
 
 ### Features
 
 - `/weather` endpoint to get weather data for any location
 - `/incoming` endpoint for Mattermost webhook integration
 - Command-line test mode for quick weather checks
+- Uses mock weather data for demonstration purposes
 
 ### Setup
 
-1. Get an API key from [Tomorrow.io](https://www.tomorrow.io/)
-2. Set the API key as an environment variable:
-   ```
-   export TOMORROW_API_KEY=your_api_key_here
-   ```
-3. Run the server:
+1. Run the server:
    ```
    go run main.go
    ```
@@ -47,5 +43,4 @@ go run main.go -test -location="miami,fl"
 
 ### Environment Variables
 
-- `TOMORROW_API_KEY`: Your Tomorrow.io API key (required)
 - `PORT`: Server port (default: 8085)

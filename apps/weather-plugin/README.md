@@ -4,65 +4,58 @@
 
 # Weather Plugin
 
-A Mattermost plugin for getting weather data and managing weather subscriptions using the Tomorrow.io API.
+A Mattermost plugin that provides mock weather data and subscription management for demonstration purposes.
 
 ## Features
 
-- Get current weather data for any location
+- Get mock weather data for any location
 - Subscribe to periodic weather updates in channels
-- Manage API usage limits
-- List active subscriptions
-- Uses a dedicated bot user "Weather Bot" (@weatherbot) for all weather messages
+- Manage subscriptions (list, subscribe, unsubscribe)
+- Dedicated bot user (@weatherbot) for weather messages
 
 ## Installation
 
-1. Build the plugin: `make dist`
-2. Upload the generated `.tar.gz` file to your Mattermost server via System Console > Plugins
-3. Configure the Tomorrow.io API key in the plugin settings
-4. The plugin will automatically create a bot user named "Weather Bot" (@weatherbot) when activated
+1. **Build the plugin**:
+   ```bash
+   make dist
+   ```
 
-## Configuration
+2. **Install in Mattermost**:
+   - Navigate to **System Console > Plugins**
+   - Upload the generated `.tar.gz` file from the `dist/` directory
+   - Enable the plugin
 
-- **Tomorrow.io API Key**: Required for accessing weather data. Get your API key from [Tomorrow.io](https://www.tomorrow.io/)
+3. **Start using**:
+   - The plugin automatically creates "Weather Bot" (@weatherbot)
+   - Use `/weather help` to see available commands
 
 ## Commands
 
 ### Basic Commands
 - `/weather <location>` - Get current weather for a location
-- `/weather help` - Show help information
-- `/weather limits` - Show API usage limits and current usage
-- `/weather list` - List active subscriptions in the channel
+- `/weather help` - Show help message
+- `/weather list` - List active subscriptions in this channel
+- `/weather list --all` - List all subscriptions on the server
 
 ### Subscription Commands
-- `/weather subscribe <location> <frequency>` - Subscribe to weather updates
+- `/weather subscribe --location <location> --frequency <frequency>` - Subscribe to weather updates
 - `/weather unsubscribe <subscription_id>` - Unsubscribe from weather updates
 
 ### Examples
-- `/weather London` - Get current weather for London
-- `/weather subscribe Tokyo 3600000` - Get hourly weather updates for Tokyo (3600000ms = 1 hour)
-- `/weather subscribe "San Francisco" 1h` - Get hourly weather updates for San Francisco
-- `/weather unsubscribe sub_1234567890` - Unsubscribe from a specific subscription
+```bash
+/weather London
+/weather subscribe --location Tokyo --frequency 1h
+/weather subscribe --location "New York" --frequency 30m
+/weather unsubscribe sub_1234567890
+```
 
-## API Limits
-
-The plugin enforces API usage limits to prevent excessive calls:
-- 25 requests per hour
-- 500 requests per day
-
-Use `/weather limits` to check current usage.
+**Note**: This plugin uses mock weather data - any location will return randomized weather information for demonstration purposes.
 
 ## Development
 
-### Building
+### Build Commands
 ```bash
-make server   # Build server binaries
-make bundle   # Create plugin bundle
-make dist     # Build and bundle
+make dist          # Build and package plugin
+make server        # Build server binaries only
+make clean         # Remove build artifacts
 ```
-
-### Structure
-- `server/plugin.go` - Main plugin entry point
-- `server/weather_service.go` - Weather API integration
-- `server/subscription_manager.go` - Subscription management
-- `server/command_handler.go` - Slash command handling
-- `server/configuration.go` - Plugin configuration
