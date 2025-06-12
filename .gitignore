@@ -19,3 +19,4 @@ files/postgres/replica/replica_2_postgres.conf
 **/coverage.*
 **/build/bin
 **/dist
+**/bin

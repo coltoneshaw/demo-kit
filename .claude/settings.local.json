@@ -15,7 +15,9 @@
       "Bash(curl:*)",
       "Bash(rm:*)",
       "WebFetch(domain:github.com)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(make:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": []
   }
