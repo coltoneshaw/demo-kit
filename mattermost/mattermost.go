@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,20 +24,12 @@ const (
 	// MaxWaitSeconds is the maximum time to wait for server startup
 	MaxWaitSeconds = 120
 
-	// EnvFile is the path to the environment variables file
-	EnvFile = "../files/env_vars.env"
-
-	// TestUrlPattern is used to detect when we're running in test mode
-	TestUrlPattern = "mattermost-kit.ngrok.io"
+	DefaultSiteURL = "http://localhost:8065"
 
 	// Default admin user credentials
-	DefaultAdminUsername = "systemadmin"
-	DefaultAdminPassword = "Password123!"
+	DefaultAdminUsername = "sysadmin"
+	DefaultAdminPassword = "Sys@dmin-sample1"
 )
-
-// WebhookConfigFunction is a function type for updating webhook configurations.
-// It allows mocking the webhook update functionality during testing.
-type WebhookConfigFunction func(webhookID, appName, envVarName, containerName string) error
 
 // Client represents a Mattermost API client with configuration for managing
 // authentication, team contexts, and integration endpoints.
@@ -56,15 +49,17 @@ type Client struct {
 	// TeamName is the name of the team to use for operations
 	TeamName string
 
-	// UpdateWebhookConfig is a function that updates environment variables and restarts
-	// containers when webhook configurations change
-	UpdateWebhookConfig WebhookConfigFunction
-
 	// Config is the loaded configuration from config.json
 	Config *Config
 
 	// ConfigPath is the path to the configuration file
 	ConfigPath string
+
+	// Managers for different operations
+	UserManager    *UserManager
+	TeamManager    *TeamManager
+	ChannelManager *ChannelManager
+	PluginManager  *PluginManager
 }
 
 // LogOptions contains options for controlling log output
@@ -85,24 +80,8 @@ func handleAPIError(operation string, err error, resp *model.Response) error {
 	return nil
 }
 
-// log conditionally logs a message based on test detection.
-// Messages are suppressed when running tests against the ngrok URL.
-func (c *Client) log(message string) {
-	if !strings.Contains(c.ServerURL, TestUrlPattern) {
-		fmt.Println(message)
-	}
-}
-
-// logf conditionally logs a formatted message based on test detection.
-// Messages are suppressed when running tests against the ngrok URL.
-func (c *Client) logf(format string, args ...interface{}) {
-	if !strings.Contains(c.ServerURL, TestUrlPattern) {
-		fmt.Printf(format, args...)
-	}
-}
-
 // NewClient creates a new Mattermost client with the specified connection parameters.
-// It initializes the API client and sets default webhook URLs for integrated applications.
+// It initializes the API client for integrated applications.
 //
 // Parameters:
 //   - serverURL: The base URL of the Mattermost server (e.g., http://localhost:8065)
@@ -122,16 +101,18 @@ func NewClient(serverURL, adminUser, adminPass, teamName string, configPath stri
 		ConfigPath: configPath,
 	}
 
-	// Set up the default webhook configuration implementation
-	client.UpdateWebhookConfig = client.updateWebhookConfigImpl
+	// Initialize managers
+	client.UserManager = NewUserManager(client)
+	client.TeamManager = NewTeamManager(client)
+	client.ChannelManager = NewChannelManager(client)
+	client.PluginManager = NewPluginManager(client)
 
 	// Load the configuration if possible
 	config, err := LoadConfig(configPath)
 	if err == nil {
 		client.Config = config
 	} else {
-		// Log the error but continue - we'll use defaults
-		client.logf("❌ Failed to load config file: %v\n", err)
+		fmt.Printf("❌ Failed to load config file: %v\n", err)
 	}
 
 	return client
@@ -139,8 +120,46 @@ func NewClient(serverURL, adminUser, adminPass, teamName string, configPath stri
 
 // Login authenticates with the Mattermost server
 func (c *Client) Login() error {
-	_, resp, err := c.API.Login(context.Background(), c.AdminUser, c.AdminPass)
-	return handleAPIError("login failed", err, resp)
+	user, resp, err := c.API.Login(context.Background(), c.AdminUser, c.AdminPass)
+	if err != nil {
+		return handleAPIError(fmt.Sprintf("login failed for user '%s' with password '%s'", c.AdminUser, c.AdminPass), err, resp)
+	}
+
+	// Ensure the logged-in user has admin privileges
+	if err := c.UserManager.EnsureUserIsAdmin(user); err != nil {
+		return fmt.Errorf("failed to ensure admin role for user '%s': %w", c.AdminUser, err)
+	}
+
+	return nil
+}
+
+// CheckLicense verifies that the Mattermost server has a valid license
+func (c *Client) CheckLicense() error {
+	// Try to get license information to verify it's valid
+	license, resp, err := c.API.GetOldClientLicense(context.Background(), "")
+	if err != nil || (resp != nil && resp.StatusCode != 200) {
+		return handleAPIError("failed to get license", err, resp)
+	}
+
+	if license == nil {
+		return fmt.Errorf("❌ No valid license found on the server")
+	}
+
+	// Check if the server is licensed
+	isLicensed, exists := license["IsLicensed"]
+	if !exists || isLicensed != "true" {
+		return fmt.Errorf("❌ Mattermost server is not licensed. This setup tool requires a licensed Mattermost Enterprise server (IsLicensed: %s)", isLicensed)
+	}
+
+	// Get license ID for confirmation
+	licenseId, hasId := license["Id"]
+	if hasId {
+		fmt.Printf("✅ Server is licensed (ID: %s)\n", licenseId)
+	} else {
+		fmt.Println("✅ Server is licensed")
+	}
+	
+	return nil
 }
 
 // WaitForStart polls the Mattermost server until it responds or times out.
@@ -176,97 +195,10 @@ func (c *Client) WaitForStart() error {
 	return fmt.Errorf("server didn't start in %d seconds", MaxWaitSeconds)
 }
 
-// ensureUserIsAdmin ensures a user has system_admin role
-func (c *Client) ensureUserIsAdmin(user *model.User) error {
-	if !strings.Contains(user.Roles, "system_admin") {
-		// Use UpdateUserRoles API to directly assign system_admin role
-		_, err := c.API.UpdateUserRoles(context.Background(), user.Id, "system_admin system_user")
-		if err != nil {
-			c.logf("❌ Failed to assign system_admin role to user '%s': %v\n", user.Username, err)
-			return err
-		}
-		c.logf("✅ Successfully assigned system_admin role to user '%s'\n", user.Username)
-	}
-	return nil
-}
-
-// createOrGetUser creates a new user or returns an existing one
-func (c *Client) createOrGetUser(username, email, password, nickname string, isAdmin bool) (*model.User, error) {
-	// Check if user already exists
-	existingUsers, resp, err := c.API.GetUsers(context.Background(), 0, 1000, "")
-	if err != nil {
-		return nil, handleAPIError("failed to get users", err, resp)
-	}
-
-	// Look for existing user
-	for _, user := range existingUsers {
-		if user.Username == username {
-			c.logf("User '%s' already exists\n", username)
-
-			// Ensure admin status if needed
-			if isAdmin {
-				if err := c.ensureUserIsAdmin(user); err != nil {
-					return user, err // Still return the user even if admin role update fails
-				}
-			}
-
-			return user, nil
-		}
-	}
-
-	// Create the user
-	c.logf("Creating %s user...\n", username)
-
-	// Set roles if system admin
-	roles := "system_user" // Always include system_user
-	if isAdmin {
-		roles = "system_admin system_user"
-	}
-
-	newUser := &model.User{
-		Username: username,
-		Email:    email,
-		Password: password,
-		Nickname: nickname,
-		Roles:    roles,
-	}
-
-	createdUser, resp, err := c.API.CreateUser(context.Background(), newUser)
-	if err != nil {
-		return nil, handleAPIError(fmt.Sprintf("failed to create user '%s'", username), err, resp)
-	}
-
-	c.logf("✅ Successfully created user '%s' (ID: %s)\n", createdUser.Username, createdUser.Id)
-	return createdUser, nil
-}
-
 // CreateUsers creates test users from the config file if they don't exist.
 // If no config file is available, it falls back to creating default users.
 func (c *Client) CreateUsers() error {
-	// If we have a config file, use it to create users
-	if c.Config != nil && len(c.Config.Users) > 0 {
-		c.log("Creating users from configuration file...")
-
-		// Process each user from the config
-		for _, userConfig := range c.Config.Users {
-			_, err := c.createOrGetUser(
-				userConfig.Username,
-				userConfig.Email,
-				userConfig.Password,
-				userConfig.Nickname,
-				userConfig.IsSystemAdmin,
-			)
-			if err != nil {
-				c.logf("❌ Error with user '%s': %v\n", userConfig.Username, err)
-			}
-		}
-
-		return nil
-	}
-
-	// No default users if no config is available - we rely on the systemadmin user
-	c.log("No configuration file found. Using only default admin user.")
-	return nil
+	return c.UserManager.CreateUsersFromConfig(c.Config, c.TeamManager)
 }
 
 // createOrGetTeam creates a new team or returns an existing one
@@ -280,13 +212,13 @@ func (c *Client) createOrGetTeam(teamName, displayName, description, teamType st
 	// Check if team already exists
 	for _, team := range existingTeams {
 		if team.Name == teamName {
-			c.logf("Team '%s' already exists\n", teamName)
+			fmt.Printf("Team '%s' already exists\n", teamName)
 			return team, nil
 		}
 	}
 
 	// Create the team
-	c.logf("Creating '%s' team...\n", teamName)
+	fmt.Printf("Creating '%s' team...\n", teamName)
 
 	// Default to Open type if not specified
 	if teamType == "" {
@@ -305,14 +237,14 @@ func (c *Client) createOrGetTeam(teamName, displayName, description, teamType st
 		return nil, handleAPIError("failed to create team", err, createResp)
 	}
 
-	c.logf("✅ Successfully created team '%s' (ID: %s)\n", createdTeam.Name, createdTeam.Id)
+	fmt.Printf("✅ Successfully created team '%s' (ID: %s)\n", createdTeam.Name, createdTeam.Id)
 	return createdTeam, nil
 }
 
 // CreateTeam creates teams from config or a default team if no config available
-// It also sets up webhooks and slash commands for each team as it's created
+// It creates teams as needed
 func (c *Client) CreateTeam() error {
-	// Get all existing teams for user assignments
+	// Get all existing teams (should include teams created by CreateUsers)
 	existingTeams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
 	if err != nil {
 		return handleAPIError("failed to get teams", err, resp)
@@ -324,34 +256,27 @@ func (c *Client) CreateTeam() error {
 		existingTeamMap[team.Name] = team
 	}
 
-	// If we have a config file with teams, use it to create teams
+	// If we have a config file with teams, set up channels and resources
+	// (teams should already be created by CreateUsers)
 	if c.Config != nil && len(c.Config.Teams) > 0 {
-		c.log("Creating teams from configuration file...")
+		fmt.Println("Setting up team resources (channels, etc.)...")
 
 		// Process each team from the config
 		for _, teamConfig := range c.Config.Teams {
-			team, err := c.createOrGetTeam(
-				teamConfig.Name,
-				teamConfig.DisplayName,
-				teamConfig.Description,
-				teamConfig.Type,
-			)
-			if err != nil {
-				c.logf("❌ Error with team '%s': %v\n", teamConfig.Name, err)
+			team, exists := existingTeamMap[teamConfig.Name]
+			if !exists {
+				fmt.Printf("❌ Team '%s' not found, skipping resource setup\n", teamConfig.Name)
 				continue
 			}
 
-			// Update the team maps
-			existingTeamMap[team.Name] = team
-
-			// Set up webhooks and slash commands for this team
+			// Set up channels for this team
 			if err := c.setupTeamResources(team, teamConfig); err != nil {
-				c.logf("⚠️ Warning: Error setting up resources for team '%s': %v\n", teamConfig.Name, err)
+				fmt.Printf("⚠️ Warning: Error setting up resources for team '%s': %v\n", teamConfig.Name, err)
 			}
 		}
 	} else {
 		// Fallback to creating the default team if it doesn't exist
-		c.log("No team configuration found. Creating default team...")
+		fmt.Println("No team configuration found. Creating default team...")
 
 		team, err := c.createOrGetTeam(
 			c.TeamName,
@@ -372,7 +297,8 @@ func (c *Client) CreateTeam() error {
 		return fmt.Errorf("no teams could be created or found")
 	}
 
-	// Add users to teams according to config
+	// Note: User-team assignments are now handled in CreateUsers(),
+	// but we keep AddUsersToTeams for any legacy or fallback scenarios
 	if err := c.AddUsersToTeams(existingTeamMap); err != nil {
 		return err
 	}
@@ -382,17 +308,24 @@ func (c *Client) CreateTeam() error {
 
 // addUserToTeam adds a user to a team and handles common error cases
 func (c *Client) addUserToTeam(user *model.User, team *model.Team) error {
+	// Check if user is already a team member
+	_, resp, err := c.API.GetTeamMember(context.Background(), team.Id, user.Id, "")
+	if err == nil && resp.StatusCode == 200 {
+		fmt.Printf("User '%s' is already a member of team '%s'\n", user.Username, team.Name)
+		return nil
+	}
+
 	_, teamResp, err := c.API.AddTeamMember(context.Background(), team.Id, user.Id)
 	if err != nil {
 		// Check if the error is because the user is already a member
 		if teamResp != nil && teamResp.StatusCode == 400 {
-			c.logf("User '%s' is already a member of team '%s'\n", user.Username, team.Name)
+			fmt.Printf("User '%s' is already a member of team '%s'\n", user.Username, team.Name)
 			return nil
 		}
 		return fmt.Errorf("failed to add user '%s' to team '%s': %w", user.Username, team.Name, err)
 	}
 
-	c.logf("✅ Added user '%s' to team '%s'\n", user.Username, team.Name)
+	fmt.Printf("✅ Added user '%s' to team '%s'\n", user.Username, team.Name)
 	return nil
 }
 
@@ -412,14 +345,14 @@ func (c *Client) AddUsersToTeams(teamMap map[string]*model.Team) error {
 
 	// If we have a config file with users, use their team assignments
 	if c.Config != nil && len(c.Config.Users) > 0 {
-		c.log("Adding users to teams from configuration...")
+		fmt.Println("Adding users to teams from configuration...")
 
 		// Loop through each user in config
 		for _, userConfig := range c.Config.Users {
 			// Skip if user doesn't exist
 			user, exists := userMap[userConfig.Username]
 			if !exists {
-				c.logf("❌ User '%s' not found, can't add to teams\n", userConfig.Username)
+				fmt.Printf("❌ User '%s' not found, can't add to teams\n", userConfig.Username)
 				continue
 			}
 
@@ -428,19 +361,19 @@ func (c *Client) AddUsersToTeams(teamMap map[string]*model.Team) error {
 				// Skip if team doesn't exist
 				team, exists := teamMap[teamName]
 				if !exists {
-					c.logf("❌ Team '%s' not found, can't add user '%s'\n", teamName, userConfig.Username)
+					fmt.Printf("❌ Team '%s' not found, can't add user '%s'\n", teamName, userConfig.Username)
 					continue
 				}
 
 				// Add user to team with error handling
 				if err := c.addUserToTeam(user, team); err != nil {
-					c.logf("❌ %v\n", err)
+					fmt.Printf("❌ %v\n", err)
 				}
 			}
 		}
 	} else {
 		// Fallback to adding only default admin user to default team
-		c.log("No user configuration found. Adding only default admin to default team...")
+		fmt.Println("No user configuration found. Adding only default admin to default team...")
 
 		// Get default team
 		team, exists := teamMap[c.TeamName]
@@ -451,219 +384,14 @@ func (c *Client) AddUsersToTeams(teamMap map[string]*model.Team) error {
 		// Add default admin user to the default team
 		user, exists := userMap[DefaultAdminUsername]
 		if !exists {
-			c.logf("❌ Default admin user '%s' not found\n", DefaultAdminUsername)
+			fmt.Printf("❌ Default admin user '%s' not found\n", DefaultAdminUsername)
 			return nil
 		}
 
 		// Add admin user to team with error handling
 		if err := c.addUserToTeam(user, team); err != nil {
-			c.logf("❌ %v\n", err)
+			fmt.Printf("❌ %v\n", err)
 		}
-	}
-
-	return nil
-}
-
-// createOrGetSlashCommand creates a slash command or returns if it already exists
-func (c *Client) createOrGetSlashCommand(teamID string, cmd *model.Command) (*model.Command, error) {
-	// Get existing commands
-	commands, resp, err := c.API.ListCommands(context.Background(), teamID, true)
-	if err != nil {
-		return nil, handleAPIError("failed to list commands", err, resp)
-	}
-
-	// Check if command already exists
-	for _, existingCmd := range commands {
-		if existingCmd.Trigger == cmd.Trigger {
-			c.logf("/%s command already exists\n", cmd.Trigger)
-			return existingCmd, nil
-		}
-	}
-
-	// Create the command
-	c.logf("Creating /%s slash command...\n", cmd.Trigger)
-
-	createdCmd, resp, err := c.API.CreateCommand(context.Background(), cmd)
-	if err != nil {
-		return nil, handleAPIError(fmt.Sprintf("failed to create /%s command", cmd.Trigger), err, resp)
-	}
-
-	c.logf("✅ /%s command created successfully (ID: %s)\n", createdCmd.Trigger, createdCmd.Id)
-	return createdCmd, nil
-}
-
-// CreateSlashCommand creates a single slash command
-func (c *Client) CreateSlashCommand(teamID, trigger, url, displayName, description, username, autoCompleteHint string) error {
-	// Create command with autocomplete enabled
-	cmd := &model.Command{
-		TeamId:           teamID,
-		Trigger:          trigger,
-		Method:           "P",
-		URL:              url,
-		CreatorId:        "", // Will be set to current user
-		DisplayName:      displayName,
-		Description:      description,
-		AutoComplete:     true,
-		AutoCompleteDesc: description,
-		AutoCompleteHint: autoCompleteHint,
-		Username:         username,
-	}
-
-	_, err := c.createOrGetSlashCommand(teamID, cmd)
-	return err
-}
-
-// CreateSlashCommandFromConfig creates a slash command from configuration
-// It takes command configuration from the config and applies it to create a slash command
-func (c *Client) CreateSlashCommandFromConfig(teamID string, cmdConfig SlashCommandConfig) error {
-	// Set default values for optional fields
-	autoCompleteDesc := cmdConfig.Description // Default to the description
-	if cmdConfig.AutoCompleteDesc != "" {
-		autoCompleteDesc = cmdConfig.AutoCompleteDesc
-	}
-
-	// Create the command with configuration values
-	cmd := &model.Command{
-		TeamId:           teamID,
-		Trigger:          cmdConfig.Trigger,
-		Method:           "P",
-		URL:              cmdConfig.URL,
-		CreatorId:        "", // Will be set to current user
-		DisplayName:      cmdConfig.DisplayName,
-		Description:      cmdConfig.Description,
-		AutoComplete:     cmdConfig.AutoComplete,
-		AutoCompleteDesc: autoCompleteDesc,
-		AutoCompleteHint: cmdConfig.AutoCompleteHint,
-		Username:         cmdConfig.Username,
-	}
-
-	_, err := c.createOrGetSlashCommand(teamID, cmd)
-	return err
-}
-
-// updateWebhookConfigImpl updates an app's webhook configuration in the environment.
-// This method:
-// 1. Updates the webhook URL in the env_vars.env file
-// 2. Restarts the associated Docker container so it picks up the new URL
-//
-// Parameters:
-//   - webhookID: The ID of the created webhook in Mattermost
-//   - appName: Display name of the app for logging purposes
-//   - envVarName: Name of the environment variable to update
-//   - containerName: Name of the Docker container to restart
-//
-// Returns an error if any step in the process fails.
-func (c *Client) updateWebhookConfigImpl(webhookID, appName, envVarName, containerName string) error {
-	c.logf("✅ Created webhook with ID: %s for %s\n", webhookID, appName)
-
-	// Update env_vars.env file with the webhook URL
-	webhookURL := fmt.Sprintf("http://mattermost:8065/hooks/%s", webhookID)
-	c.logf("Setting webhook URL: %s for %s\n", webhookURL, envVarName)
-
-	// Read the env file
-	data, err := os.ReadFile(EnvFile)
-	if err != nil {
-		return fmt.Errorf("failed to read env file: %v", err)
-	}
-
-	// Replace the line with the new webhook URL
-	lines := strings.Split(string(data), "\n")
-	for i, line := range lines {
-		if strings.HasPrefix(line, envVarName+"=") {
-			lines[i] = fmt.Sprintf("%s=%s", envVarName, webhookURL)
-			break
-		}
-	}
-
-	// Write the updated content back to the file
-	err = os.WriteFile(EnvFile, []byte(strings.Join(lines, "\n")), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write env file: %v", err)
-	}
-
-	c.logf("Updated env_vars.env with webhook URL for %s\n", appName)
-
-	// Check if container exists and is running before trying to restart
-	checkCmd := exec.Command("docker", "ps", "-q", "-f", "name="+containerName)
-	output, err := checkCmd.Output()
-	if err != nil || len(output) == 0 {
-		c.logf("❌ Container %s not found or not running, skipping restart\n", containerName)
-		return nil
-	}
-
-	// Restart the app container
-	c.logf("Restarting %s container...\n", containerName)
-	cmd := exec.Command("docker", "restart", containerName)
-	if err := cmd.Run(); err != nil {
-		c.logf("❌ Failed to restart container %s: %v\n", containerName, err)
-		// Don't return error here, just log the warning
-	} else {
-		c.logf("✅ %s restarted successfully\n", appName)
-	}
-
-	return nil
-}
-
-// createOrGetWebhook creates a webhook or returns an existing one with the same name
-func (c *Client) createOrGetWebhook(channelID, displayName, description, username string) (*model.IncomingWebhook, error) {
-	// Check if webhook already exists
-	hooks, resp, err := c.API.GetIncomingWebhooks(context.Background(), 0, 1000, "")
-	if err != nil {
-		return nil, handleAPIError("failed to get webhooks", err, resp)
-	}
-
-	for _, hook := range hooks {
-		if hook.DisplayName == displayName {
-			c.logf("Webhook '%s' already exists\n", displayName)
-			return hook, nil
-		}
-	}
-
-	// Create the webhook
-	c.logf("Creating incoming webhook '%s'...\n", displayName)
-	hook := &model.IncomingWebhook{
-		ChannelId:   channelID,
-		DisplayName: displayName,
-		Description: description,
-		Username:    username,
-	}
-
-	newHook, resp, err := c.API.CreateIncomingWebhook(context.Background(), hook)
-	if err != nil {
-		return nil, handleAPIError("failed to create webhook", err, resp)
-	}
-
-	return newHook, nil
-}
-
-// CreateWebhookFromConfig creates an incoming webhook from configuration
-// It takes webhook configuration from the config and applies it to create a webhook
-// Additionally, it updates environment variables and restarts containers as needed
-func (c *Client) CreateWebhookFromConfig(channelID string, webhookConfig WebhookConfig) error {
-	// Create the webhook
-	newHook, err := c.createOrGetWebhook(
-		channelID,
-		webhookConfig.DisplayName,
-		webhookConfig.Description,
-		webhookConfig.Username,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create '%s' webhook: %w", webhookConfig.DisplayName, err)
-	}
-
-	// If webhook already existed but we didn't get its ID, we can't update the config
-	if newHook == nil || newHook.Id == "" {
-		return fmt.Errorf("webhook created but no ID returned")
-	}
-
-	// Update the webhook configuration using the function reference
-	if err := c.UpdateWebhookConfig(
-		newHook.Id,
-		webhookConfig.DisplayName,
-		webhookConfig.EnvVariable,
-		webhookConfig.ContainerName,
-	); err != nil {
-		return fmt.Errorf("failed to update webhook config for '%s': %w", webhookConfig.DisplayName, err)
 	}
 
 	return nil
@@ -708,7 +436,7 @@ func (c *Client) GetTeamAndChannel(channelName string) (teamID, channelID string
 	return teamID, channelID, nil
 }
 
-// setupTeamResources sets up channels, webhooks and slash commands for a specific team
+// setupTeamResources sets up channels for a specific team
 // This is called immediately after creating or finding a team to ensure resources are set up
 func (c *Client) setupTeamResources(team *model.Team, teamConfig TeamConfig) error {
 	if team == nil {
@@ -716,84 +444,11 @@ func (c *Client) setupTeamResources(team *model.Team, teamConfig TeamConfig) err
 	}
 
 	teamID := team.Id
-	c.logf("Setting up resources for team '%s' (ID: %s)\n", team.Name, teamID)
+	fmt.Printf("Setting up resources for team '%s' (ID: %s)\n", team.Name, teamID)
 
-	// Set up channels for this team first (webhooks need channels to exist)
+	// Set up channels for this team first
 	if err := c.setupTeamChannels(team, teamConfig); err != nil {
 		return fmt.Errorf("failed to set up channels for team '%s': %w", team.Name, err)
-	}
-
-	// Set up webhooks for this team
-	if err := c.setupTeamWebhooks(team, teamConfig); err != nil {
-		return fmt.Errorf("failed to set up webhooks for team '%s': %w", team.Name, err)
-	}
-
-	// Set up slash commands for this team
-	if err := c.setupTeamSlashCommands(team, teamConfig); err != nil {
-		return fmt.Errorf("failed to set up slash commands for team '%s': %w", team.Name, err)
-	}
-
-	return nil
-}
-
-// setupTeamWebhooks creates webhooks for a specific team
-func (c *Client) setupTeamWebhooks(team *model.Team, teamConfig TeamConfig) error {
-	teamID := team.Id
-	c.logf("Setting up webhooks for team '%s' (ID: %s)\n", team.Name, teamID)
-
-	// Get the channels for this team
-	channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), teamID, 0, 100, "")
-	if err != nil {
-		return fmt.Errorf("failed to get channels for team '%s': %w", team.Name, err)
-	}
-
-	// Create a map of channel name to channel ID for quick lookup
-	channelMap := make(map[string]*model.Channel)
-	for _, channel := range channels {
-		channelMap[channel.Name] = channel
-	}
-
-	// Set up webhooks for this team
-	for _, webhook := range teamConfig.Webhooks {
-		// Verify the channel exists
-		channel, exists := channelMap[webhook.ChannelName]
-		if !exists {
-			c.logf("❌ Channel '%s' not found in team '%s', skipping webhook '%s'\n",
-				webhook.ChannelName, team.Name, webhook.DisplayName)
-			continue
-		}
-
-		c.logf("Creating webhook '%s' in channel '%s'\n", webhook.DisplayName, webhook.ChannelName)
-
-		// Create the webhook using the configuration
-		err := c.CreateWebhookFromConfig(channel.Id, webhook)
-		if err != nil {
-			c.logf("❌ Failed to create webhook '%s': %v\n", webhook.DisplayName, err)
-			continue
-		}
-
-		c.logf("✅ Successfully created webhook '%s' in channel '%s'\n",
-			webhook.DisplayName, webhook.ChannelName)
-	}
-
-	return nil
-}
-
-// setupTeamSlashCommands creates slash commands for a specific team
-func (c *Client) setupTeamSlashCommands(team *model.Team, teamConfig TeamConfig) error {
-	teamID := team.Id
-	c.logf("Setting up slash commands for team '%s' (ID: %s)\n", team.Name, teamID)
-
-	// Set up slash commands for this team
-	for _, cmd := range teamConfig.SlashCommands {
-		c.logf("Creating /%s slash command for team '%s'\n", cmd.Trigger, team.Name)
-
-		// Create the slash command using the configuration
-		err := c.CreateSlashCommandFromConfig(teamID, cmd)
-		if err != nil {
-			c.logf("❌ Failed to create /%s command: %v\n", cmd.Trigger, err)
-			continue
-		}
 	}
 
 	return nil
@@ -813,14 +468,14 @@ func (c *Client) createOrGetChannel(teamID, name, displayName, purpose, header, 
 		if privateErr == nil {
 			channels = append(channels, privateChannels...)
 		} else {
-			c.logf("❌ Warning: Failed to get private channels: %v\n", privateErr)
+			fmt.Printf("❌ Warning: Failed to get private channels: %v\n", privateErr)
 		}
 	}
 
 	// Check if channel already exists
 	for _, channel := range channels {
 		if channel.Name == name {
-			c.logf("Channel '%s' already exists in team\n", name)
+			fmt.Printf("Channel '%s' already exists in team\n", name)
 			return channel, nil
 		}
 	}
@@ -831,7 +486,7 @@ func (c *Client) createOrGetChannel(teamID, name, displayName, purpose, header, 
 	}
 
 	// Create the channel
-	c.logf("Creating '%s' channel...\n", name)
+	fmt.Printf("Creating '%s' channel...\n", name)
 
 	newChannel := &model.Channel{
 		TeamId:      teamID,
@@ -847,24 +502,31 @@ func (c *Client) createOrGetChannel(teamID, name, displayName, purpose, header, 
 		return nil, handleAPIError("failed to create channel", err, createResp)
 	}
 
-	c.logf("✅ Successfully created channel '%s' (ID: %s)\n", createdChannel.Name, createdChannel.Id)
+	fmt.Printf("✅ Successfully created channel '%s' (ID: %s)\n", createdChannel.Name, createdChannel.Id)
 	return createdChannel, nil
 }
 
 // addUserToChannel adds a user to a channel and handles common error cases
-func (c *Client) addUserToChannel(userID, channelID string) error {
-	_, resp, err := c.API.AddChannelMember(context.Background(), channelID, userID)
+func (c *Client) addUserToChannel(userID, channelID, username, channelName string) error {
+	// Check if user is already a channel member
+	_, resp, err := c.API.GetChannelMember(context.Background(), channelID, userID, "")
+	if err == nil && resp.StatusCode == 200 {
+		fmt.Printf("User '%s' is already a member of channel '%s'\n", username, channelName)
+		return nil
+	}
+
+	_, resp, err = c.API.AddChannelMember(context.Background(), channelID, userID)
 	if err != nil {
 		// Check if the error is because the user is already a member
 		if resp != nil && resp.StatusCode == 400 {
 			// Look for the "already a member" message
-			c.logf("User is already a member of the channel\n")
+			fmt.Printf("User '%s' is already a member of channel '%s'\n", username, channelName)
 			return nil
 		}
-		return fmt.Errorf("failed to add user to channel: %w", err)
+		return fmt.Errorf("failed to add user '%s' to channel '%s': %w", username, channelName, err)
 	}
 
-	c.logf("✅ Added user to channel successfully\n")
+	fmt.Printf("✅ Added user '%s' to channel '%s'\n", username, channelName)
 	return nil
 }
 
@@ -874,7 +536,7 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 		return fmt.Errorf("channel ID and category name are required")
 	}
 
-	c.logf("Categorizing channel %s in category '%s' using Playbooks API...\n", channelID, categoryName)
+	fmt.Printf("Categorizing channel %s in category '%s' using Playbooks API...\n", channelID, categoryName)
 
 	// Construct the URL for the categorize channel API
 	url := fmt.Sprintf("%s/plugins/playbooks/api/v0/actions/channels/%s",
@@ -924,7 +586,9 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 	if err != nil {
 		return fmt.Errorf("failed to send categorize request: %w", err)
 	}
-	defer resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		fmt.Printf("failed to close response body: %v", err)
+	}
 
 	// Check response
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
@@ -932,7 +596,7 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 		return fmt.Errorf("categorize request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	c.logf("✅ Successfully categorized channel in '%s' using Playbooks API\n", categoryName)
+	fmt.Printf("✅ Successfully categorized channel in '%s' using Playbooks API\n", categoryName)
 	return nil
 }
 
@@ -949,11 +613,11 @@ func (c *Client) categorizeChannel(channelID string, categoryName string) error 
 // setupTeamChannels creates channels for a specific team and adds members
 func (c *Client) setupTeamChannels(team *model.Team, teamConfig TeamConfig) error {
 	teamID := team.Id
-	c.logf("Setting up channels for team '%s' (ID: %s)\n", team.Name, teamID)
+	fmt.Printf("Setting up channels for team '%s' (ID: %s)\n", team.Name, teamID)
 
 	// Skip if no channels are configured
 	if len(teamConfig.Channels) == 0 {
-		c.logf("No channels configured for team '%s'\n", team.Name)
+		fmt.Printf("No channels configured for team '%s'\n", team.Name)
 		return nil
 	}
 
@@ -969,14 +633,14 @@ func (c *Client) setupTeamChannels(team *model.Team, teamConfig TeamConfig) erro
 			channelConfig.Type,
 		)
 		if err != nil {
-			c.logf("❌ Failed to create channel '%s': %v\n", channelConfig.Name, err)
+			fmt.Printf("❌ Failed to create channel '%s': %v\n", channelConfig.Name, err)
 			continue
 		}
 
 		// If a category is specified, categorize the channel before adding members
 		if channelConfig.Category != "" {
 			if err := c.categorizeChannel(channel.Id, channelConfig.Category); err != nil {
-				c.logf("⚠️ Warning: Failed to categorize channel '%s' in category '%s': %v\n",
+				fmt.Printf("⚠️ Warning: Failed to categorize channel '%s' in category '%s': %v\n",
 					channelConfig.Name, channelConfig.Category, err)
 				// Don't return error here, continue with other operations
 			}
@@ -996,7 +660,7 @@ func (c *Client) AddChannelMembers() error {
 		return nil
 	}
 
-	c.log("Adding members to channels...")
+	fmt.Println("Adding members to channels...")
 
 	// Get all teams
 	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
@@ -1026,7 +690,7 @@ func (c *Client) AddChannelMembers() error {
 	for teamName, teamConfig := range c.Config.Teams {
 		team, exists := teamMap[teamName]
 		if !exists {
-			c.logf("❌ Team '%s' not found, can't add channel members\n", teamName)
+			fmt.Printf("❌ Team '%s' not found, can't add channel members\n", teamName)
 			continue
 		}
 
@@ -1040,7 +704,7 @@ func (c *Client) AddChannelMembers() error {
 			// Get the channel
 			channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
 			if err != nil {
-				c.logf("❌ Failed to get channels for team '%s': %v\n", teamName, err)
+				fmt.Printf("❌ Failed to get channels for team '%s': %v\n", teamName, err)
 				continue
 			}
 
@@ -1062,24 +726,22 @@ func (c *Client) AddChannelMembers() error {
 			}
 
 			if channel == nil {
-				c.logf("❌ Channel '%s' not found in team '%s'\n", channelConfig.Name, teamName)
+				fmt.Printf("❌ Channel '%s' not found in team '%s'\n", channelConfig.Name, teamName)
 				continue
 			}
 
 			// Add members to the channel
-			c.logf("Adding %d members to channel '%s'\n", len(channelConfig.Members), channelConfig.Name)
+			fmt.Printf("Adding %d members to channel '%s'\n", len(channelConfig.Members), channelConfig.Name)
 
 			for _, username := range channelConfig.Members {
 				user, exists := userMap[username]
 				if !exists {
-					c.logf("❌ User '%s' not found, can't add to channel '%s'\n", username, channelConfig.Name)
+					fmt.Printf("❌ User '%s' not found, can't add to channel '%s'\n", username, channelConfig.Name)
 					continue
 				}
 
-				if err := c.addUserToChannel(user.Id, channel.Id); err != nil {
-					c.logf("❌ Failed to add user '%s' to channel '%s': %v\n", username, channelConfig.Name, err)
-				} else {
-					c.logf("✅ Added user '%s' to channel '%s'\n", username, channelConfig.Name)
+				if err := c.addUserToChannel(user.Id, channel.Id, username, channelConfig.Name); err != nil {
+					fmt.Printf("❌ Failed to add user '%s' to channel '%s': %v\n", username, channelConfig.Name, err)
 				}
 			}
 		}
@@ -1096,7 +758,7 @@ func (c *Client) SetupChannelCommands() error {
 		return nil
 	}
 
-	c.log("Setting up channel commands...")
+	fmt.Println("Setting up channel commands...")
 
 	// Get all teams
 	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
@@ -1114,14 +776,14 @@ func (c *Client) SetupChannelCommands() error {
 	for teamName, teamConfig := range c.Config.Teams {
 		team, exists := teamMap[teamName]
 		if !exists {
-			c.logf("❌ Team '%s' not found, can't execute commands\n", teamName)
+			fmt.Printf("❌ Team '%s' not found, can't execute commands\n", teamName)
 			return fmt.Errorf("team '%s' not found", teamName)
 		}
 
 		// Get all channels for this team
 		channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
 		if err != nil {
-			c.logf("❌ Failed to get channels for team '%s': %v\n", teamName, err)
+			fmt.Printf("❌ Failed to get channels for team '%s': %v\n", teamName, err)
 			return fmt.Errorf("failed to get channels for team '%s': %w", teamName, err)
 		}
 
@@ -1147,11 +809,11 @@ func (c *Client) SetupChannelCommands() error {
 			// Find the channel
 			channel, exists := channelMap[channelConfig.Name]
 			if !exists {
-				c.logf("❌ Channel '%s' not found in team '%s'\n", channelConfig.Name, teamName)
+				fmt.Printf("❌ Channel '%s' not found in team '%s'\n", channelConfig.Name, teamName)
 				return fmt.Errorf("channel '%s' not found in team '%s'", channelConfig.Name, teamName)
 			}
 
-			c.logf("Executing %d commands for channel '%s' (sequentially)...\n",
+			fmt.Printf("Executing %d commands for channel '%s' (sequentially)...\n",
 				len(channelConfig.Commands), channelConfig.Name)
 
 			// Execute each command in order, waiting for each to complete
@@ -1160,14 +822,14 @@ func (c *Client) SetupChannelCommands() error {
 				commandText := strings.TrimSpace(command)
 
 				if !strings.HasPrefix(commandText, "/") {
-					c.logf("❌ Invalid command '%s' for channel '%s' - must start with /\n",
+					fmt.Printf("❌ Invalid command '%s' for channel '%s' - must start with /\n",
 						commandText, channelConfig.Name)
 					return fmt.Errorf("invalid command '%s' - must start with /", commandText)
 				}
 
 				// Remove the leading slash for the API
 
-				c.logf("Executing command %d/%d in channel '%s': %s\n",
+				fmt.Printf("Executing command %d/%d in channel '%s': %s\n",
 					i+1, len(channelConfig.Commands), channelConfig.Name, commandText)
 
 				// Execute the command using the commands/execute API
@@ -1175,18 +837,18 @@ func (c *Client) SetupChannelCommands() error {
 
 				// Check for any errors or non-200 response
 				if err != nil {
-					c.logf("❌ Failed to execute command '%s': %v\n", commandText, err)
+					fmt.Printf("❌ Failed to execute command '%s': %v\n", commandText, err)
 					return fmt.Errorf("failed to execute command '%s': %w", commandText, err)
 				}
 
 				if resp.StatusCode != 200 {
-					c.logf("❌ Command '%s' returned non-200 status code: %d\n",
+					fmt.Printf("❌ Command '%s' returned non-200 status code: %d\n",
 						commandText, resp.StatusCode)
 					return fmt.Errorf("command '%s' returned status code %d",
 						commandText, resp.StatusCode)
 				}
 
-				c.logf("✅ Successfully executed command %d/%d: '%s' in channel '%s'\n",
+				fmt.Printf("✅ Successfully executed command %d/%d: '%s' in channel '%s'\n",
 					i+1, len(channelConfig.Commands), commandText, channelConfig.Name)
 
 				// Add a small delay between commands to ensure proper ordering
@@ -1200,26 +862,27 @@ func (c *Client) SetupChannelCommands() error {
 
 // SetupTestData sets up test data in Mattermost based on configuration
 func (c *Client) SetupTestData() error {
-	c.log("===========================================")
-	c.log("Setting up test Data for Mattermost")
-	c.log("===========================================")
+	fmt.Println("===========================================")
+	fmt.Println("Setting up test Data for Mattermost")
+	fmt.Println("===========================================")
 
 	// Load configuration if not already loaded
 	if c.Config == nil {
 		config, err := LoadConfig(c.ConfigPath)
 		if err != nil {
-			c.logf("❌ Failed to load config: %v, using defaults\n", err)
+			fmt.Printf("❌ Failed to load config: %v, using defaults\n", err)
 		} else {
 			c.Config = config
 		}
 	}
 
+	// CreateUsers now handles both user creation and team assignments from config
 	if err := c.CreateUsers(); err != nil {
 		return err
 	}
 
-	// Create teams and set up webhooks and slash commands
-	// The CreateTeam function now handles webhook and slash command setup
+	// Only run CreateTeam if we need to handle legacy setup or channels
+	// (since CreateUsers now handles teams from config)
 	if err := c.CreateTeam(); err != nil {
 		return err
 	}
@@ -1227,14 +890,20 @@ func (c *Client) SetupTestData() error {
 	// Now that teams are created and users added to teams,
 	// we can add users to channels
 	if err := c.AddChannelMembers(); err != nil {
-		c.logf("❌ Warning: Error adding channel members: %v\n", err)
+		fmt.Printf("❌ Warning: Error adding channel members: %v\n", err)
 		// Don't return error here, continue with setup
 	}
 
-	// Now that channels are fully set up with members,
+	// Set up plugins before executing channel commands (plugins provide the slash commands)
+	if err := c.SetupPlugins(); err != nil {
+		fmt.Printf("❌ Warning: Error setting up plugins: %v\n", err)
+		// Don't return error here, continue with setup as plugins might be optional
+	}
+
+	// Now that channels are fully set up with members and plugins are installed,
 	// we can execute the channel commands
 	if err := c.SetupChannelCommands(); err != nil {
-		c.logf("❌ Error executing channel commands: %v\n", err)
+		fmt.Printf("❌ Error executing channel commands: %v\n", err)
 		// Return error here to abort the setup process
 		return fmt.Errorf("failed to execute channel commands: %w", err)
 	}
@@ -1242,29 +911,207 @@ func (c *Client) SetupTestData() error {
 	return nil
 }
 
-// CreateDefaultAdminUser creates the single default admin user using mmctl
-func (c *Client) CreateDefaultAdminUser() error {
-	c.log("Creating default system admin user with mmctl...")
+// PluginInfo represents information about a plugin
+type PluginInfo struct {
+	ID     string
+	Name   string
+	Path   string
+	Built  bool
+	Exists bool
+}
 
-	// Use Docker exec to run mmctl command
-	cmd := exec.Command("docker", "exec", "-i", "mattermost", "mmctl", "user", "create",
-		"--email", DefaultAdminUsername+"@example.com",
-		"--username", DefaultAdminUsername,
-		"--password", DefaultAdminPassword,
-		"--system-admin",
-		"--local")
+// GetPluginInfo returns information about required plugins
+func (c *Client) GetPluginInfo() []PluginInfo {
+	return []PluginInfo{
+		{
+			ID:   "com.coltoneshaw.weather",
+			Name: "Weather Plugin",
+			Path: "../apps/weather-plugin",
+		},
+		{
+			ID:   "com.coltoneshaw.flightaware",
+			Name: "FlightAware Plugin",
+			Path: "../apps/flightaware-plugin",
+		},
+		{
+			ID:   "com.coltoneshaw.missionops",
+			Name: "Mission Operations Plugin",
+			Path: "../apps/missionops-plugin",
+		},
+	}
+}
 
-	output, err := cmd.CombinedOutput()
+// IsPluginInstalled checks if a plugin is installed on the server
+func (c *Client) IsPluginInstalled(pluginID string) (bool, error) {
+	plugins, resp, err := c.API.GetPlugins(context.Background())
 	if err != nil {
-		// Check if error is because user already exists (which is fine)
-		if strings.Contains(string(output), "already exists") {
-			c.log("Default admin user already exists, continuing with setup...")
-			return nil
-		}
-		return fmt.Errorf("failed to create default admin user with mmctl: %v, output: %s", err, output)
+		return false, handleAPIError("failed to get plugins", err, resp)
 	}
 
-	c.log("✅ Successfully created default admin user with mmctl")
+	// Check both active and inactive plugins
+	for _, plugin := range plugins.Active {
+		if plugin.Id == pluginID {
+			return true, nil
+		}
+	}
+	for _, plugin := range plugins.Inactive {
+		if plugin.Id == pluginID {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// IsPluginBuilt checks if a plugin bundle already exists
+func (c *Client) IsPluginBuilt(pluginPath string) bool {
+	bundlePath, err := c.FindPluginBundle(pluginPath)
+	if err != nil {
+		return false
+	}
+	// Check if the bundle file actually exists
+	_, err = os.Stat(bundlePath)
+	return err == nil
+}
+
+// BuildPlugin builds a plugin from its source directory using make
+func (c *Client) BuildPlugin(pluginPath string) error {
+	// Check if the plugin directory exists
+	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
+		return fmt.Errorf("plugin directory does not exist: %s", pluginPath)
+	}
+
+	// Check if Makefile exists
+	makefilePath := filepath.Join(pluginPath, "Makefile")
+	if _, err := os.Stat(makefilePath); os.IsNotExist(err) {
+		return fmt.Errorf("makefile not found in plugin directory: %s", pluginPath)
+	}
+
+	fmt.Printf("Building plugin in %s...\n", pluginPath)
+
+	// Run make dist to build the plugin
+	cmd := exec.Command("make", "dist")
+	cmd.Dir = pluginPath
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to build plugin: %w", err)
+	}
+
+	fmt.Printf("✅ Plugin built successfully\n")
+	return nil
+}
+
+// FindPluginBundle finds the built plugin bundle (.tar.gz) in the dist directory
+func (c *Client) FindPluginBundle(pluginPath string) (string, error) {
+	distPath := filepath.Join(pluginPath, "dist")
+
+	// Check if dist directory exists
+	if _, err := os.Stat(distPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("dist directory does not exist: %s", distPath)
+	}
+
+	// Find .tar.gz files in dist directory
+	matches, err := filepath.Glob(filepath.Join(distPath, "*.tar.gz"))
+	if err != nil {
+		return "", fmt.Errorf("failed to search for plugin bundle: %w", err)
+	}
+
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no plugin bundle (.tar.gz) found in %s", distPath)
+	}
+
+	// Return the first match (should only be one)
+	return matches[0], nil
+}
+
+// UploadPlugin uploads and installs a plugin to the Mattermost server
+func (c *Client) UploadPlugin(bundlePath string) error {
+	fmt.Printf("Uploading plugin bundle: %s\n", bundlePath)
+
+	// Open the bundle file
+	file, err := os.Open(bundlePath)
+	if err != nil {
+		return fmt.Errorf("failed to open plugin bundle: %w", err)
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close plugin bundle file: %v\n", closeErr)
+		}
+	}()
+
+	fmt.Printf("Uploading with force flag (will overwrite existing plugin)\n")
+	// Reset file position
+	if _, seekErr := file.Seek(0, 0); seekErr != nil {
+		return fmt.Errorf("❌ failed to reset file position: %w", seekErr)
+	}
+	manifest, resp, err := c.API.UploadPluginForced(context.Background(), file)
+	if err != nil {
+		return handleAPIError(fmt.Sprintf("failed to upload plugin bundle '%s': %v", bundlePath, err), err, resp)
+	}
+	fmt.Printf("✅ Plugin '%s' (ID: %s) uploaded successfully (forced)\n", manifest.Name, manifest.Id)
+
+	// Enable the plugin
+	enableResp, enableErr := c.API.EnablePlugin(context.Background(), manifest.Id)
+	if enableErr != nil {
+		return handleAPIError("failed to enable plugin", enableErr, enableResp)
+	}
+
+	fmt.Printf("✅ Plugin '%s' enabled successfully\n", manifest.Name)
+	return nil
+}
+
+// SetupPlugins ensures all required plugins are installed and enabled
+func (c *Client) SetupPlugins() error {
+	fmt.Println("Setting up plugins...")
+
+	plugins := c.GetPluginInfo()
+
+	for _, plugin := range plugins {
+		fmt.Printf("Checking plugin '%s' (ID: %s)\n", plugin.Name, plugin.ID)
+
+		// Check if plugin is already installed
+		installed, err := c.IsPluginInstalled(plugin.ID)
+		if err != nil {
+			fmt.Printf("❌ Failed to check if plugin '%s' is installed: %v\n", plugin.Name, err)
+			continue
+		}
+
+		if installed {
+			fmt.Printf("✅ Plugin '%s' is already installed\n", plugin.Name)
+			continue
+		}
+
+		fmt.Printf("Plugin '%s' not found, checking for existing build...\n", plugin.Name)
+
+		// Check if plugin is already built
+		if c.IsPluginBuilt(plugin.Path) {
+			fmt.Printf("✅ Plugin '%s' is already built, attempting upload with force...\n", plugin.Name)
+		} else {
+			fmt.Printf("Building plugin '%s'...\n", plugin.Name)
+			// Build the plugin
+			if err := c.BuildPlugin(plugin.Path); err != nil {
+				fmt.Printf("❌ Failed to build plugin '%s': %v\n", plugin.Name, err)
+				continue
+			}
+		}
+
+		// Find the built bundle
+		bundlePath, err := c.FindPluginBundle(plugin.Path)
+		if err != nil {
+			fmt.Printf("❌ Failed to find plugin bundle for '%s': %v\n", plugin.Name, err)
+			continue
+		}
+
+		if err := c.UploadPlugin(bundlePath); err != nil {
+			fmt.Printf("❌ Failed to upload plugin '%s': %v\n", plugin.Name, err)
+			continue
+		}
+
+		fmt.Printf("✅ Plugin '%s' setup completed\n", plugin.Name)
+	}
+
 	return nil
 }
 
@@ -1276,28 +1123,22 @@ func (c *Client) Setup() error {
 	}
 
 	// Load configuration if not already loaded
-	if c.Config == nil && c.ConfigPath != "" {
-		config, err := LoadConfig(c.ConfigPath)
-		if err != nil {
-			c.logf("Failed to load config from %s: %v\n", c.ConfigPath, err)
-			// Try default path if specific path fails
-			config, err = LoadConfig(DefaultConfigPath)
-			if err != nil {
-				c.logf("Failed to load config from default path: %v\n", err)
-			} else {
-				c.Config = config
-			}
+	if c.Config == nil {
+		var configPath string
+		if c.ConfigPath != "" {
+			configPath = c.ConfigPath
 		} else {
-			c.Config = config
+			configPath = DefaultConfigPath
 		}
+		
+		config, err := LoadConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to load config file: %w", err)
+		}
+		c.Config = config
 	}
 
 	if err := c.WaitForStart(); err != nil {
-		return err
-	}
-
-	// Create default admin user with mmctl before attempting login
-	if err := c.CreateDefaultAdminUser(); err != nil {
 		return err
 	}
 
@@ -1305,11 +1146,21 @@ func (c *Client) Setup() error {
 		return err
 	}
 
+	// Verify the server is licensed before proceeding with setup
+	if err := c.CheckLicense(); err != nil {
+		return err
+	}
+
+	// Download and install latest plugins from config and files directory
+	if err := c.PluginManager.SetupLatestPlugins(c.Config); err != nil {
+		return fmt.Errorf("failed to setup plugins: %w", err)
+	}
+
 	if err := c.SetupTestData(); err != nil {
 		return err
 	}
 
-	c.log("Alright, everything seems to be setup and running. Enjoy.")
+	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
 	return nil
 }
 

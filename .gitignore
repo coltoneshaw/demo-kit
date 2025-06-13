@@ -20,3 +20,4 @@ files/postgres/replica/replica_2_postgres.conf
 **/build/bin
 **/dist
 **/bin
+files/mattermost/plugins

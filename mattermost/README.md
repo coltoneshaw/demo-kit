@@ -4,8 +4,6 @@ This Go package provides functionality to set up a Mattermost server with test d
 
 - Creating test users
 - Creating a test team
-- Setting up slash commands for flight and weather apps
-- Creating webhooks for the apps
 
 ## Usage
 

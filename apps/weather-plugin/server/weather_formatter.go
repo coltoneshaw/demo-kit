@@ -136,7 +136,7 @@ func (wf *WeatherFormatter) FormatAsAttachment(weatherData *WeatherResponse, cha
 		Color:     wf.getAttachmentColor(weatherData.Data.Values.WeatherCode),
 		Fields:    fields,
 		Footer:    "Weather Bot",
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
 	return &model.Post{

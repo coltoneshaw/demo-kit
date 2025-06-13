@@ -1,4 +1,4 @@
-.PHONY: stop start check_mattermost
+.PHONY: stop start check_mattermost build
 	
 logs:
 	@echo "Following logs..."
@@ -108,3 +108,59 @@ nuke:
 echo-logins:
 	@cd mattermost && go run ./cmd/main.go -echo-logins
 	@./scripts/general.sh logins
+
+GO_PACKAGES=$(shell go list ./...)
+GO ?= $(shell command -v go 2> /dev/null)
+
+BUILD_COMMAND ?= go build -ldflags '$(LDFLAGS)' -o ./bin/mmsetup 
+
+# We need to export GOBIN to allow it to be set
+# for processes spawned from the Makefile
+export GOBIN ?= $(PWD)/bin
+
+build: test
+	mkdir -p bin
+	$(BUILD_COMMAND)
+
+run:
+	go run ./main.go
+
+package: test
+	mkdir -p build bin 
+
+	@echo Build Linux amd64
+	env GOOS=linux GOARCH=amd64 $(BUILD_COMMAND)
+	tar cf - -C bin mmhealth | gzip -9 > build/linux_amd64.tar.gz
+
+
+	@echo Build OSX amd64
+	env GOOS=darwin GOARCH=amd64 $(BUILD_COMMAND)
+	tar cf - -C bin mmhealth | gzip -9 > build/darwin_amd64.tar.gz
+
+	@echo Build OSX arm64
+	env GOOS=darwin GOARCH=arm64 $(BUILD_COMMAND)
+	tar cf - -C bin mmhealth | gzip -9 > build/darwin_arm64.tar.gz
+
+	@echo Build Windows amd64
+	env GOOS=windows GOARCH=amd64 go build -ldflags '$(LDFLAGS)' -o ./bin/mmhealth.exe 
+	zip -9 build/windows_amd64.zip ./bin/mmhealth.exe
+
+	rm ./bin/mmhealth ./bin/mmhealth.exe
+
+check-style:  install-go-tools verify-gomod
+	@echo Running golangci-lint
+	$(GO) vet ./...
+	$(GOBIN)/golangci-lint run ./...
+
+test: check-style
+	@echo Running tests
+	$(GO) test -race -cover -v $(GO_PACKAGES)
+
+verify-gomod:
+	$(GO) mod download
+	$(GO) mod verify
+
+## Install go tools
+install-go-tools:
+	@echo Installing go tools
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6

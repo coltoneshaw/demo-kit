@@ -10,7 +10,7 @@ import (
 
 // Default configuration file paths
 const (
-	DefaultConfigPath = "../config.json"
+	DefaultConfigPath = "./config.json"
 )
 
 // UserConfig represents the configuration for a Mattermost user
@@ -41,61 +41,9 @@ type Config struct {
 
 	// Teams is an optional map of team configurations
 	Teams map[string]TeamConfig `json:"teams,omitempty"`
-}
 
-// WebhookConfig represents the configuration for a Mattermost webhook
-type WebhookConfig struct {
-	// DisplayName is the webhook display name
-	DisplayName string `json:"displayName"`
-
-	// Description is the webhook description
-	Description string `json:"description"`
-
-	// ChannelName is the channel where the webhook should be added
-	ChannelName string `json:"channelName"`
-
-	// Username is the webhook username
-	Username string `json:"username"`
-
-	// IconURL is an optional URL for the webhook icon
-	IconURL string `json:"iconUrl,omitempty"`
-
-	// EnvVariable is the environment variable to set with the webhook URL
-	EnvVariable string `json:"envVariable"`
-
-	// ContainerName is the container to restart after webhook creation
-	ContainerName string `json:"containerName"`
-}
-
-// SlashCommandConfig represents the configuration for a Mattermost slash command
-type SlashCommandConfig struct {
-	// Trigger is the command trigger word (e.g., "weather" for /weather)
-	Trigger string `json:"trigger"`
-
-	// URL is the endpoint that the command will call
-	URL string `json:"url"`
-
-	// DisplayName is the command display name
-	DisplayName string `json:"displayName"`
-
-	// Description is the command description
-	Description string `json:"description"`
-
-	// Username is the command bot username
-	Username string `json:"username"`
-
-	// AutoComplete enables command autocomplete
-	AutoComplete bool `json:"autoComplete"`
-
-	// AutoCompleteDesc is the description shown in autocomplete
-	// If not specified but AutoComplete is true, the Description field is used
-	AutoCompleteDesc string `json:"autoCompleteDesc,omitempty"`
-
-	// AutoCompleteHint is the hint shown in autocomplete to guide users on command syntax
-	// For example, "[location] [--subscribe]" shows users the expected parameters
-	// If not specified but AutoComplete is true, built-in defaults are used for standard
-	// commands (weather/flights) based on the trigger name
-	AutoCompleteHint string `json:"autoCompleteHint,omitempty"`
+	// Plugins is an optional array of plugin configurations to download from GitHub
+	Plugins []PluginConfig `json:"plugins,omitempty"`
 }
 
 // ChannelConfig represents the configuration for a Mattermost channel
@@ -141,12 +89,15 @@ type TeamConfig struct {
 
 	// Channels defines the channels to create for this team
 	Channels []ChannelConfig `json:"channels,omitempty"`
+}
 
-	// Webhooks defines the webhooks to create for this team
-	Webhooks []WebhookConfig `json:"webhooks,omitempty"`
+// PluginConfig represents the configuration for a plugin to download from GitHub
+type PluginConfig struct {
+	// Name is the human-readable plugin name
+	Name string `json:"name"`
 
-	// SlashCommands defines the slash commands to create for this team
-	SlashCommands []SlashCommandConfig `json:"slashCommands,omitempty"`
+	// Repo is the GitHub repository in format "owner/repo"
+	Repo string `json:"github_repo"`
 }
 
 // LoadConfig loads the configuration from the specified file path
@@ -282,37 +233,6 @@ func validateConfig(config *Config) error {
 			}
 		}
 
-		// Validate webhooks
-		for i, webhook := range team.Webhooks {
-			if webhook.DisplayName == "" {
-				return fmt.Errorf("webhook at index %d for team '%s' is missing displayName", i, name)
-			}
-			if webhook.ChannelName == "" {
-				return fmt.Errorf("webhook '%s' for team '%s' is missing channelName", webhook.DisplayName, name)
-			}
-			if webhook.EnvVariable == "" {
-				return fmt.Errorf("webhook '%s' for team '%s' is missing envVariable", webhook.DisplayName, name)
-			}
-			if webhook.ContainerName == "" {
-				return fmt.Errorf("webhook '%s' for team '%s' is missing containerName", webhook.DisplayName, name)
-			}
-		}
-
-		// Validate slash commands
-		for i, cmd := range team.SlashCommands {
-			if cmd.Trigger == "" {
-				return fmt.Errorf("slash command at index %d for team '%s' is missing trigger", i, name)
-			}
-			if cmd.URL == "" {
-				return fmt.Errorf("slash command '%s' for team '%s' is missing URL", cmd.Trigger, name)
-			}
-			if cmd.DisplayName == "" {
-				return fmt.Errorf("slash command '%s' for team '%s' is missing displayName", cmd.Trigger, name)
-			}
-			if cmd.Description == "" {
-				return fmt.Errorf("slash command '%s' for team '%s' is missing description", cmd.Trigger, name)
-			}
-		}
 	}
 
 	return nil
