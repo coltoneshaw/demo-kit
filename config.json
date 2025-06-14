@@ -799,11 +799,13 @@
   "plugins": [
     {
       "name": "Playbooks",
-      "github_repo": "mattermost/mattermost-plugin-playbooks"
+      "github_repo": "mattermost/mattermost-plugin-playbooks",
+      "plugin-id": "mattermost-plugin-playbooks"
     },
     {
       "name": "AI Plugin",
-      "github_repo": "mattermost/mattermost-plugin-agents"
+      "github_repo": "mattermost/mattermost-plugin-agents",
+      "plugin-id": "mattermost-plugin-ai"
     }
   ]
 }

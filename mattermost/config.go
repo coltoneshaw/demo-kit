@@ -98,6 +98,9 @@ type PluginConfig struct {
 
 	// Repo is the GitHub repository in format "owner/repo"
 	Repo string `json:"github_repo"`
+
+	// PluginID is the prefix of the tar file (e.g., "mattermost-plugin-playbooks")
+	PluginID string `json:"plugin-id"`
 }
 
 // LoadConfig loads the configuration from the specified file path

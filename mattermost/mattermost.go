@@ -158,7 +158,7 @@ func (c *Client) CheckLicense() error {
 	} else {
 		fmt.Println("✅ Server is licensed")
 	}
-	
+
 	return nil
 }
 
@@ -894,12 +894,6 @@ func (c *Client) SetupTestData() error {
 		// Don't return error here, continue with setup
 	}
 
-	// Set up plugins before executing channel commands (plugins provide the slash commands)
-	if err := c.SetupPlugins(); err != nil {
-		fmt.Printf("❌ Warning: Error setting up plugins: %v\n", err)
-		// Don't return error here, continue with setup as plugins might be optional
-	}
-
 	// Now that channels are fully set up with members and plugins are installed,
 	// we can execute the channel commands
 	if err := c.SetupChannelCommands(); err != nil {
@@ -1062,59 +1056,6 @@ func (c *Client) UploadPlugin(bundlePath string) error {
 	return nil
 }
 
-// SetupPlugins ensures all required plugins are installed and enabled
-func (c *Client) SetupPlugins() error {
-	fmt.Println("Setting up plugins...")
-
-	plugins := c.GetPluginInfo()
-
-	for _, plugin := range plugins {
-		fmt.Printf("Checking plugin '%s' (ID: %s)\n", plugin.Name, plugin.ID)
-
-		// Check if plugin is already installed
-		installed, err := c.IsPluginInstalled(plugin.ID)
-		if err != nil {
-			fmt.Printf("❌ Failed to check if plugin '%s' is installed: %v\n", plugin.Name, err)
-			continue
-		}
-
-		if installed {
-			fmt.Printf("✅ Plugin '%s' is already installed\n", plugin.Name)
-			continue
-		}
-
-		fmt.Printf("Plugin '%s' not found, checking for existing build...\n", plugin.Name)
-
-		// Check if plugin is already built
-		if c.IsPluginBuilt(plugin.Path) {
-			fmt.Printf("✅ Plugin '%s' is already built, attempting upload with force...\n", plugin.Name)
-		} else {
-			fmt.Printf("Building plugin '%s'...\n", plugin.Name)
-			// Build the plugin
-			if err := c.BuildPlugin(plugin.Path); err != nil {
-				fmt.Printf("❌ Failed to build plugin '%s': %v\n", plugin.Name, err)
-				continue
-			}
-		}
-
-		// Find the built bundle
-		bundlePath, err := c.FindPluginBundle(plugin.Path)
-		if err != nil {
-			fmt.Printf("❌ Failed to find plugin bundle for '%s': %v\n", plugin.Name, err)
-			continue
-		}
-
-		if err := c.UploadPlugin(bundlePath); err != nil {
-			fmt.Printf("❌ Failed to upload plugin '%s': %v\n", plugin.Name, err)
-			continue
-		}
-
-		fmt.Printf("✅ Plugin '%s' setup completed\n", plugin.Name)
-	}
-
-	return nil
-}
-
 // Setup performs the main setup based on configuration
 func (c *Client) Setup() error {
 	// Safety check - make sure the client and API are properly initialized
@@ -1130,7 +1071,7 @@ func (c *Client) Setup() error {
 		} else {
 			configPath = DefaultConfigPath
 		}
-		
+
 		config, err := LoadConfig(configPath)
 		if err != nil {
 			return fmt.Errorf("failed to load config file: %w", err)
