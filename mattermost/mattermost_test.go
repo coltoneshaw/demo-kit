@@ -230,13 +230,3 @@ func TestTeamManagement(t *testing.T) {
 	}
 }
 
-// TestSetupTestData tests the setup of test data
-func TestSetupTestData(t *testing.T) {
-	client := setupTestClient(t)
-
-	// Run the setup function
-	err := client.SetupTestData()
-	if err != nil {
-		t.Errorf("Failed to set up test data: %v", err)
-	}
-}

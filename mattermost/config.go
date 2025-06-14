@@ -10,7 +10,7 @@ import (
 
 // Default configuration file paths
 const (
-	DefaultConfigPath = "./config.json"
+	DefaultConfigPath = "../config.json"
 )
 
 // UserConfig represents the configuration for a Mattermost user
@@ -26,6 +26,15 @@ type UserConfig struct {
 
 	// Nickname is an optional display name
 	Nickname string `json:"nickname,omitempty"`
+
+	// FirstName is the user's first name
+	FirstName string `json:"firstname,omitempty"`
+
+	// LastName is the user's last name
+	LastName string `json:"lastname,omitempty"`
+
+	// Position is the user's job title/position
+	Position string `json:"position,omitempty"`
 
 	// IsSystemAdmin indicates if the user should have system admin privileges
 	IsSystemAdmin bool `json:"isSystemAdmin"`

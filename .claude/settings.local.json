@@ -19,7 +19,9 @@
       "Bash(make:*)",
       "mcp__ide__getDiagnostics",
       "Bash(rg:*)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "WebFetch(domain:docs.mattermost.com)",
+      "Bash(go doc:*)"
     ],
     "deny": []
   }
