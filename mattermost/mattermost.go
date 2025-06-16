@@ -259,7 +259,6 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 	return nil
 }
 
-
 // SetupChannelCommands executes specified slash commands in channels sequentially
 // If any command fails, the entire setup process will abort
 func (c *Client) SetupChannelCommands() error {
@@ -528,7 +527,6 @@ func (c *Client) Setup() error {
 		return fmt.Errorf("client not properly initialized")
 	}
 
-
 	if err := c.WaitForStart(); err != nil {
 		return err
 	}
@@ -637,10 +635,10 @@ type ResetImportLine struct {
 func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 	// Try multiple possible locations for the bulk import file
 	possiblePaths := []string{
-		"bulk_import.jsonl",          // Current directory (when run from root)
-		"../bulk_import.jsonl",       // Parent directory (when run from mattermost/)
+		"bulk_import.jsonl",    // Current directory (when run from root)
+		"../bulk_import.jsonl", // Parent directory (when run from mattermost/)
 	}
-	
+
 	var bulkImportPath string
 	for _, path := range possiblePaths {
 		if _, err := os.Stat(path); err == nil {
@@ -648,7 +646,7 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 			break
 		}
 	}
-	
+
 	if bulkImportPath == "" {
 		return nil, fmt.Errorf("bulk_import.jsonl not found. Tried: %v", possiblePaths)
 	}
@@ -657,7 +655,11 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open bulk import file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close file: %v\n", closeErr)
+		}
+	}()
 
 	var teams []BulkTeam
 	var users []BulkUser
@@ -823,7 +825,7 @@ func (c *Client) Reset() error {
 		return err
 	}
 
-	fmt.Println("🚨 WARNING: This will permanently delete all teams and users from the bulk import file.")
+	fmt.Println("🚨 WARNING: This will permanently delete all teams and users that are configured in the bulk import file.")
 	fmt.Println("This operation is irreversible.")
 
 	// Delete users first (they need to be removed from teams before teams can be deleted)
