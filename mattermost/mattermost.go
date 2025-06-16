@@ -3,6 +3,7 @@ package mattermost
 
 import (
 	// Standard library imports
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -586,6 +587,320 @@ func (c *Client) SetupBulk() error {
 	}
 
 	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
+	return nil
+}
+
+// BulkImportData represents the parsed data from bulk_import.jsonl
+type BulkImportData struct {
+	Teams []BulkTeam `json:"teams"`
+	Users []BulkUser `json:"users"`
+}
+
+// BulkTeam represents a team from bulk import
+type BulkTeam struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+}
+
+// BulkUser represents a user from bulk import
+type BulkUser struct {
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Nickname  string `json:"nickname"`
+	Position  string `json:"position"`
+}
+
+// ResetImportLine represents a single line in the bulk import JSONL file for reset operations
+type ResetImportLine struct {
+	Type string `json:"type"`
+	Team *struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+		Type        string `json:"type"`
+		Description string `json:"description"`
+	} `json:"team,omitempty"`
+	User *struct {
+		Username  string `json:"username"`
+		Email     string `json:"email"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+		Nickname  string `json:"nickname"`
+		Position  string `json:"position"`
+	} `json:"user,omitempty"`
+}
+
+// LoadBulkImportData loads and parses the bulk_import.jsonl file
+func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
+	// Try multiple possible locations for the bulk import file
+	possiblePaths := []string{
+		"bulk_import.jsonl",          // Current directory (when run from root)
+		"../bulk_import.jsonl",       // Parent directory (when run from mattermost/)
+	}
+	
+	var bulkImportPath string
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			bulkImportPath = path
+			break
+		}
+	}
+	
+	if bulkImportPath == "" {
+		return nil, fmt.Errorf("bulk_import.jsonl not found. Tried: %v", possiblePaths)
+	}
+
+	file, err := os.Open(bulkImportPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open bulk import file: %w", err)
+	}
+	defer file.Close()
+
+	var teams []BulkTeam
+	var users []BulkUser
+
+	// Read the JSONL file line by line
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		var importLine ResetImportLine
+		if err := json.Unmarshal([]byte(line), &importLine); err != nil {
+			fmt.Printf("Warning: Failed to parse line: %s\n", line)
+			continue
+		}
+
+		switch importLine.Type {
+		case "team":
+			if importLine.Team != nil {
+				teams = append(teams, BulkTeam{
+					Name:        importLine.Team.Name,
+					DisplayName: importLine.Team.DisplayName,
+					Type:        importLine.Team.Type,
+					Description: importLine.Team.Description,
+				})
+			}
+		case "user":
+			if importLine.User != nil {
+				users = append(users, BulkUser{
+					Username:  importLine.User.Username,
+					Email:     importLine.User.Email,
+					FirstName: importLine.User.FirstName,
+					LastName:  importLine.User.LastName,
+					Nickname:  importLine.User.Nickname,
+					Position:  importLine.User.Position,
+				})
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading bulk import file: %w", err)
+	}
+
+	fmt.Printf("Loaded %d teams and %d users from bulk import\n", len(teams), len(users))
+
+	return &BulkImportData{
+		Teams: teams,
+		Users: users,
+	}, nil
+}
+
+// DeleteBulkUsers permanently deletes users from bulk import data
+func (c *Client) DeleteBulkUsers(users []BulkUser) error {
+	if len(users) == 0 {
+		fmt.Println("No users found in bulk import to delete")
+		return nil
+	}
+
+	fmt.Printf("Deleting %d users from bulk import...\n", len(users))
+
+	for _, userInfo := range users {
+		// Find the user by username
+		user, resp, err := c.API.GetUserByUsername(context.Background(), userInfo.Username, "")
+		if err != nil {
+			if resp != nil && resp.StatusCode == 404 {
+				fmt.Printf("⚠️  User '%s' not found, skipping\n", userInfo.Username)
+				continue
+			}
+			return handleAPIError(fmt.Sprintf("failed to find user '%s'", userInfo.Username), err, resp)
+		}
+
+		// Permanently delete the user
+		_, err = c.API.PermanentDeleteUser(context.Background(), user.Id)
+		if err != nil {
+			return handleAPIError(fmt.Sprintf("failed to delete user '%s'", userInfo.Username), err, nil)
+		}
+
+		fmt.Printf("✅ Permanently deleted user '%s'\n", userInfo.Username)
+	}
+
+	return nil
+}
+
+// DeleteBulkTeams permanently deletes teams from bulk import data
+func (c *Client) DeleteBulkTeams(teams []BulkTeam) error {
+	if len(teams) == 0 {
+		fmt.Println("No teams found in bulk import to delete")
+		return nil
+	}
+
+	fmt.Printf("Deleting %d teams from bulk import...\n", len(teams))
+
+	for _, teamInfo := range teams {
+		// Find the team by name
+		team, resp, err := c.API.GetTeamByName(context.Background(), teamInfo.Name, "")
+		if err != nil {
+			if resp != nil && resp.StatusCode == 404 {
+				fmt.Printf("⚠️  Team '%s' not found, skipping\n", teamInfo.Name)
+				continue
+			}
+			return handleAPIError(fmt.Sprintf("failed to find team '%s'", teamInfo.Name), err, resp)
+		}
+
+		// Permanently delete the team
+		_, err = c.API.PermanentDeleteTeam(context.Background(), team.Id)
+		if err != nil {
+			return handleAPIError(fmt.Sprintf("failed to delete team '%s'", teamInfo.Name), err, nil)
+		}
+
+		fmt.Printf("✅ Permanently deleted team '%s'\n", teamInfo.Name)
+	}
+
+	return nil
+}
+
+// CheckDeletionSettings verifies that the server has deletion APIs enabled
+func (c *Client) CheckDeletionSettings() error {
+	config, resp, err := c.API.GetConfig(context.Background())
+	if err != nil {
+		return handleAPIError("failed to get server config", err, resp)
+	}
+
+	// Check EnableAPIUserDeletion
+	if config.ServiceSettings.EnableAPIUserDeletion == nil || !*config.ServiceSettings.EnableAPIUserDeletion {
+		return fmt.Errorf("ServiceSettings.EnableAPIUserDeletion is not enabled. Please enable it in the server configuration to use the reset command")
+	}
+
+	// Check EnableAPITeamDeletion
+	if config.ServiceSettings.EnableAPITeamDeletion == nil || !*config.ServiceSettings.EnableAPITeamDeletion {
+		return fmt.Errorf("ServiceSettings.EnableAPITeamDeletion is not enabled. Please enable it in the server configuration to use the reset command")
+	}
+
+	fmt.Println("✅ API deletion settings are enabled")
+	return nil
+}
+
+// Reset permanently deletes all teams and users from the bulk import file
+func (c *Client) Reset() error {
+	// Safety check - make sure the client and API are properly initialized
+	if c == nil || c.API == nil {
+		return fmt.Errorf("client not properly initialized")
+	}
+
+	if err := c.WaitForStart(); err != nil {
+		return err
+	}
+
+	if err := c.Login(); err != nil {
+		return err
+	}
+
+	// Load bulk import data
+	bulkData, err := c.LoadBulkImportData()
+	if err != nil {
+		return fmt.Errorf("failed to load bulk import data: %w", err)
+	}
+
+	// Check that deletion APIs are enabled
+	if err := c.CheckDeletionSettings(); err != nil {
+		return err
+	}
+
+	fmt.Println("🚨 WARNING: This will permanently delete all teams and users from the bulk import file.")
+	fmt.Println("This operation is irreversible.")
+
+	// Delete users first (they need to be removed from teams before teams can be deleted)
+	if err := c.DeleteBulkUsers(bulkData.Users); err != nil {
+		return fmt.Errorf("failed to delete users: %w", err)
+	}
+
+	// Then delete teams
+	if err := c.DeleteBulkTeams(bulkData.Teams); err != nil {
+		return fmt.Errorf("failed to delete teams: %w", err)
+	}
+
+	fmt.Println("✅ Reset completed successfully")
+	return nil
+}
+
+// DeleteConfigUsers permanently deletes all users from the configuration
+func (c *Client) DeleteConfigUsers() error {
+	if c.Config == nil || len(c.Config.Users) == 0 {
+		fmt.Println("No users found in configuration to delete")
+		return nil
+	}
+
+	fmt.Printf("Deleting %d users from configuration...\n", len(c.Config.Users))
+
+	for _, userConfig := range c.Config.Users {
+		// Find the user by username
+		user, resp, err := c.API.GetUserByUsername(context.Background(), userConfig.Username, "")
+		if err != nil {
+			if resp != nil && resp.StatusCode == 404 {
+				fmt.Printf("⚠️  User '%s' not found, skipping\n", userConfig.Username)
+				continue
+			}
+			return handleAPIError(fmt.Sprintf("failed to find user '%s'", userConfig.Username), err, resp)
+		}
+
+		// Permanently delete the user
+		_, err = c.API.PermanentDeleteUser(context.Background(), user.Id)
+		if err != nil {
+			return handleAPIError(fmt.Sprintf("failed to delete user '%s'", userConfig.Username), err, nil)
+		}
+
+		fmt.Printf("✅ Permanently deleted user '%s'\n", userConfig.Username)
+	}
+
+	return nil
+}
+
+// DeleteConfigTeams permanently deletes all teams from the configuration
+func (c *Client) DeleteConfigTeams() error {
+	if c.Config == nil || len(c.Config.Teams) == 0 {
+		fmt.Println("No teams found in configuration to delete")
+		return nil
+	}
+
+	fmt.Printf("Deleting %d teams from configuration...\n", len(c.Config.Teams))
+
+	for teamName := range c.Config.Teams {
+		// Find the team by name
+		team, resp, err := c.API.GetTeamByName(context.Background(), teamName, "")
+		if err != nil {
+			if resp != nil && resp.StatusCode == 404 {
+				fmt.Printf("⚠️  Team '%s' not found, skipping\n", teamName)
+				continue
+			}
+			return handleAPIError(fmt.Sprintf("failed to find team '%s'", teamName), err, resp)
+		}
+
+		// Permanently delete the team
+		_, err = c.API.PermanentDeleteTeam(context.Background(), team.Id)
+		if err != nil {
+			return handleAPIError(fmt.Sprintf("failed to delete team '%s'", teamName), err, nil)
+		}
+
+		fmt.Printf("✅ Permanently deleted team '%s'\n", teamName)
+	}
+
 	return nil
 }
 

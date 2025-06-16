@@ -10,7 +10,7 @@ import (
 
 // Default configuration file paths
 const (
-	DefaultConfigPath = "../config.json"
+	DefaultConfigPath = "config.json"
 )
 
 // UserConfig represents the configuration for a Mattermost user
@@ -113,10 +113,25 @@ type PluginConfig struct {
 }
 
 // LoadConfig loads the configuration from the specified file path
-// If path is empty, it uses the default path
+// If path is empty, it uses the default path and checks multiple locations
 func LoadConfig(path string) (*Config, error) {
 	if path == "" {
-		path = DefaultConfigPath
+		// Try multiple possible locations for the config file
+		possiblePaths := []string{
+			"config.json",          // Current directory (when run from root)
+			"../config.json",       // Parent directory (when run from mattermost/)
+		}
+		
+		for _, possiblePath := range possiblePaths {
+			if _, err := os.Stat(possiblePath); err == nil {
+				path = possiblePath
+				break
+			}
+		}
+		
+		if path == "" {
+			return nil, fmt.Errorf("config file not found. Tried: %v", possiblePaths)
+		}
 	}
 
 	// Make sure the file exists
