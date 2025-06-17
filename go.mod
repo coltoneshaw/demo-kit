@@ -7,6 +7,7 @@ toolchain go1.24.0
 require (
 	github.com/mattermost/mattermost/server/public v0.1.12
 	github.com/spf13/cobra v1.9.1
+	github.com/sirupsen/logrus v1.9.3
 )
 
 require (

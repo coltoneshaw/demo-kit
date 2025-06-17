@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
+	"github.com/sirupsen/logrus"
 )
 
 // BulkImportLine represents a single line in the bulk import JSONL file
@@ -41,13 +42,13 @@ type CommandImport struct {
 
 func closeWithLog(c io.Closer, label string) {
 	if err := c.Close(); err != nil {
-		fmt.Printf("warning: failed to close %s: %v", label, err)
+		Log.WithFields(logrus.Fields{"label": label, "error": err.Error()}).Warn("⚠️ Failed to close resource")
 	}
 }
 
 func removeWithLog(path string) {
 	if err := os.Remove(path); err != nil {
-		fmt.Printf("warning: failed to remove %s: %v\n", path, err)
+		Log.WithFields(logrus.Fields{"file_path": path, "error": err.Error()}).Warn("⚠️ Failed to remove file")
 	}
 }
 
@@ -115,7 +116,7 @@ func (c *Client) ImportBulkData(filePath string) error {
 	}
 
 	// Start import job
-	fmt.Printf("🚀 Creating import job for file: %s\n", importFileName)
+	Log.WithFields(logrus.Fields{"import_file": importFileName}).Info("🚀 Creating import job for file")
 	job, resp, err := c.API.CreateJob(context.Background(), &model.Job{
 		Type: model.JobTypeImportProcess,
 		Data: map[string]string{
@@ -125,7 +126,7 @@ func (c *Client) ImportBulkData(filePath string) error {
 	if err != nil {
 		return handleAPIError("failed to create import job", err, resp)
 	}
-	fmt.Printf("✅ Import job created with ID: %s\n", job.Id)
+	Log.WithFields(logrus.Fields{"job_id": job.Id}).Info("✅ Import job created")
 
 	// Wait for completion
 	return c.waitForJobCompletion(job)
@@ -141,7 +142,7 @@ func (c *Client) uploadImportFile(zipPath string) (string, error) {
 		if err := file.Close(); err != nil {
 			// Silently ignore "file already closed" errors
 			if !strings.Contains(err.Error(), "file already closed") {
-				fmt.Printf("warning: failed to close upload zip file: %v", err)
+				Log.WithFields(logrus.Fields{"zip_path": zipPath, "error": err.Error()}).Warn("⚠️ Failed to close upload zip file")
 			}
 		}
 	}()
@@ -176,7 +177,11 @@ func (c *Client) uploadImportFile(zipPath string) (string, error) {
 
 	// The actual filename that Mattermost stores is sessionId_originalName
 	actualFileName := uploadSession.Id + "_" + fileInfo.Name()
-	fmt.Printf("📤 Uploaded import file: %s -> %s (Session: %s)\n", fileInfo.Name(), actualFileName, uploadSession.Id)
+	Log.WithFields(logrus.Fields{
+		"original_file": fileInfo.Name(),
+		"actual_file": actualFileName,
+		"session_id": uploadSession.Id,
+	}).Info("📤 Uploaded import file")
 	return actualFileName, nil
 }
 
@@ -223,7 +228,7 @@ func (c *Client) SetupWithSplitImport() error {
 		return err
 	}
 
-	fmt.Println("Starting two-phase bulk import...")
+	Log.Info("🚀 Starting two-phase bulk import")
 
 	if err := c.importInfrastructure(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to import infrastructure: %w", err)
@@ -248,10 +253,12 @@ func (c *Client) SetupWithSplitImport() error {
 
 // importInfrastructure imports teams and channels
 func (c *Client) importInfrastructure(bulkImportPath string) error {
+	Log.WithFields(logrus.Fields{"import_type": "infrastructure", "file_path": bulkImportPath}).Info("📋 Processing infrastructure import")
 	return c.processLines(bulkImportPath, []string{"team", "channel"}, c.ImportBulkData)
 }
 
 func (c *Client) importUsers(bulkImportPath string) error {
+	Log.WithFields(logrus.Fields{"import_type": "users", "file_path": bulkImportPath}).Info("📋 Processing users import")
 	return c.processLines(bulkImportPath, []string{"user"}, c.ImportBulkData)
 }
 
@@ -294,7 +301,7 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 		}
 		if err := json.Unmarshal([]byte(line), &typeCheck); err != nil {
 			// If we can't even parse the type, skip with warning
-			fmt.Printf("Warning: Failed to parse type from line, skipping: %s\n", line)
+			Log.WithFields(logrus.Fields{"line": line}).Warn("⚠️ Failed to parse type from line, skipping")
 			continue
 		}
 
@@ -307,7 +314,7 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 		var importLine BulkImportLine
 		if err := json.Unmarshal([]byte(line), &importLine); err != nil {
 			// Only warn for non-custom types that fail to parse
-			fmt.Printf("Warning: Failed to parse standard import line, skipping: %s\n", line)
+			Log.WithFields(logrus.Fields{"line": line}).Warn("⚠️ Failed to parse standard import line, skipping")
 			continue
 		}
 
@@ -335,7 +342,7 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 
 // processChannelCategories processes channel categories
 func (c *Client) processChannelCategories(bulkImportPath string) error {
-	fmt.Println("Processing channel categories...")
+	Log.WithFields(logrus.Fields{"file_path": bulkImportPath}).Info("📋 Processing channel categories")
 	
 	file, err := os.Open(bulkImportPath)
 	if err != nil {
@@ -365,7 +372,12 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 						// Don't count as error or update - just silently skip
 						continue
 					}
-					fmt.Printf("Warning: Failed to categorize channel '%s': %v\n", channelName, err)
+					Log.WithFields(logrus.Fields{
+						"channel_name": channelName,
+						"team_name": categoryImport.Team,
+						"category": categoryImport.Category,
+						"error": err.Error(),
+					}).Warn("⚠️ Failed to categorize channel")
 					errorCount++
 				} else {
 					categorizedCount++
@@ -375,9 +387,12 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 	}
 	
 	if categorizedCount > 0 || errorCount > 0 {
-		fmt.Printf("✅ Channel categorization complete (%d updated, %d errors)\n", categorizedCount, errorCount)
+		Log.WithFields(logrus.Fields{
+			"categorized_count": categorizedCount,
+			"error_count": errorCount,
+		}).Info("✅ Channel categorization complete")
 	} else {
-		fmt.Println("✅ All channels already properly categorized")
+		Log.Info("✅ All channels already properly categorized")
 	}
 
 	return scanner.Err()
@@ -385,13 +400,14 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 
 // processCommands processes commands
 func (c *Client) processCommands(bulkImportPath string) error {
+	Log.WithFields(logrus.Fields{"file_path": bulkImportPath}).Info("📋 Processing commands")
 	file, err := os.Open(bulkImportPath)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close file: %v\n", closeErr)
+			Log.WithFields(logrus.Fields{"file_path": bulkImportPath, "error": closeErr.Error()}).Warn("⚠️ Failed to close file")
 		}
 	}()
 
@@ -409,7 +425,12 @@ func (c *Client) processCommands(bulkImportPath string) error {
 
 		if commandImport.Type == "command" {
 			if err := c.executeCommand(commandImport.Command.Team, commandImport.Command.Channel, commandImport.Command.Text); err != nil {
-				fmt.Printf("Warning: Failed to execute command: %v\n", err)
+				Log.WithFields(logrus.Fields{
+					"team_name": commandImport.Command.Team,
+					"channel_name": commandImport.Command.Channel,
+					"command_text": commandImport.Command.Text,
+					"error": err.Error(),
+				}).Warn("⚠️ Failed to execute command")
 			}
 		}
 	}

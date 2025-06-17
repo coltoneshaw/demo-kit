@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Default configuration file paths
@@ -215,8 +217,11 @@ func validateConfig(config *Config) error {
 
 				if !userFound {
 					// This is just a warning, not an error
-					fmt.Printf("Warning: Member '%s' in channel '%s' is not defined in users section\n",
-						member, channel.Name)
+					Log.WithFields(logrus.Fields{
+						"member": member,
+						"channel": channel.Name,
+						"team": name,
+					}).Warn("⚠️ Member in channel is not defined in users section")
 				}
 			}
 
@@ -254,8 +259,12 @@ func validateConfig(config *Config) error {
 
 				if !validType {
 					// Just a warning, not an error
-					fmt.Printf("Warning: Command type '%s' for channel '%s' may not be supported\n",
-						cmdName, channel.Name)
+					Log.WithFields(logrus.Fields{
+						"command_type": cmdName,
+						"channel": channel.Name,
+						"team": name,
+						"supported_types": supportedTypes,
+					}).Warn("⚠️ Command type may not be supported")
 				}
 			}
 		}

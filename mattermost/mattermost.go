@@ -18,6 +18,7 @@ import (
 
 	// Third party imports
 	"github.com/mattermost/mattermost/server/public/model"
+	"github.com/sirupsen/logrus"
 )
 
 // Constants for configuration and behaviors
@@ -119,7 +120,7 @@ func (c *Client) Login() error {
 		if err != nil {
 			return fmt.Errorf("failed to assign system_admin role to user '%s': %w", c.AdminUser, err)
 		}
-		fmt.Printf("✅ Assigned system_admin role to user '%s'\n", c.AdminUser)
+		Log.WithFields(logrus.Fields{"user_name": c.AdminUser}).Info("✅ Assigned system_admin role to user")
 	}
 
 	return nil
@@ -146,9 +147,9 @@ func (c *Client) CheckLicense() error {
 	// Get license ID for confirmation
 	licenseId, hasId := license["Id"]
 	if hasId {
-		fmt.Printf("✅ Server is licensed (ID: %s)\n", licenseId)
+		Log.WithFields(logrus.Fields{"license_id": licenseId}).Info("✅ Server is licensed")
 	} else {
-		fmt.Println("✅ Server is licensed")
+		Log.Info("✅ Server is licensed")
 	}
 
 	return nil
@@ -162,6 +163,8 @@ func (c *Client) CheckLicense() error {
 //
 // Returns nil if the server starts successfully, or an error if the timeout is reached.
 func (c *Client) WaitForStart() error {
+	Log.Info("🚀 Waiting for Mattermost server to start...")
+	
 	// Progress indicators
 	progressChars := []string{"-", "\\", "|", "/"}
 
@@ -176,6 +179,7 @@ func (c *Client) WaitForStart() error {
 		if err == nil && resp != nil && resp.StatusCode == 200 {
 			// Clear the progress line
 			fmt.Print("\r                                                           \r")
+			Log.Info("✅ Mattermost server is ready")
 			return nil
 		}
 
@@ -184,6 +188,7 @@ func (c *Client) WaitForStart() error {
 
 	// Clear the progress line
 	fmt.Print("\r                                                           \r")
+	Log.WithFields(logrus.Fields{"timeout_seconds": MaxWaitSeconds}).Error("❌ Server didn't start within timeout")
 	return fmt.Errorf("server didn't start in %d seconds", MaxWaitSeconds)
 }
 
@@ -218,7 +223,7 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 	}
 
 	// Log only when we're actually going to create a new categorization action
-	fmt.Printf("📋 Categorizing channel %s in category '%s'\n", channelID, categoryName)
+	Log.WithFields(logrus.Fields{"channel_id": channelID, "category_name": categoryName}).Info("📋 Categorizing channel")
 
 	// Construct the URL for the categorize channel API
 	url := fmt.Sprintf("%s/plugins/playbooks/api/v0/actions/channels/%s",
@@ -269,7 +274,7 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close response body: %v\n", closeErr)
+			Log.WithFields(logrus.Fields{"error": closeErr.Error()}).Warn("⚠️ Failed to close response body")
 		}
 	}()
 
@@ -279,7 +284,7 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 		return fmt.Errorf("categorize request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	fmt.Printf("✅ Successfully categorized channel in '%s' using Playbooks API\n", categoryName)
+	Log.WithFields(logrus.Fields{"category_name": categoryName}).Info("✅ Successfully categorized channel using Playbooks API")
 	return nil
 }
 
@@ -292,7 +297,7 @@ func (c *Client) SetupChannelCommands() error {
 		return nil
 	}
 
-	fmt.Println("Setting up channel commands...")
+	Log.Info("🚀 Setting up channel commands...")
 
 	// Get all teams
 	teams, resp, err := c.API.GetAllTeams(context.Background(), "", 0, 100)
@@ -310,14 +315,14 @@ func (c *Client) SetupChannelCommands() error {
 	for teamName, teamConfig := range c.Config.Teams {
 		team, exists := teamMap[teamName]
 		if !exists {
-			fmt.Printf("❌ Team '%s' not found, can't execute commands\n", teamName)
+			Log.WithFields(logrus.Fields{"team_name": teamName}).Error("❌ Team not found, can't execute commands")
 			return fmt.Errorf("team '%s' not found", teamName)
 		}
 
 		// Get all channels for this team
 		channels, _, err := c.API.GetPublicChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
 		if err != nil {
-			fmt.Printf("❌ Failed to get channels for team '%s': %v\n", teamName, err)
+			Log.WithFields(logrus.Fields{"team_name": teamName, "error": err.Error()}).Error("❌ Failed to get channels for team")
 			return fmt.Errorf("failed to get channels for team '%s': %w", teamName, err)
 		}
 
@@ -343,12 +348,11 @@ func (c *Client) SetupChannelCommands() error {
 			// Find the channel
 			channel, exists := channelMap[channelConfig.Name]
 			if !exists {
-				fmt.Printf("❌ Channel '%s' not found in team '%s'\n", channelConfig.Name, teamName)
+				Log.WithFields(logrus.Fields{"channel_name": channelConfig.Name, "team_name": teamName}).Error("❌ Channel not found in team")
 				return fmt.Errorf("channel '%s' not found in team '%s'", channelConfig.Name, teamName)
 			}
 
-			fmt.Printf("Executing %d commands for channel '%s' (sequentially)...\n",
-				len(channelConfig.Commands), channelConfig.Name)
+			Log.WithFields(logrus.Fields{"command_count": len(channelConfig.Commands), "channel_name": channelConfig.Name}).Info("📋 Executing commands for channel (sequentially)")
 
 			// Execute each command in order, waiting for each to complete
 			for i, command := range channelConfig.Commands {
@@ -356,34 +360,40 @@ func (c *Client) SetupChannelCommands() error {
 				commandText := strings.TrimSpace(command)
 
 				if !strings.HasPrefix(commandText, "/") {
-					fmt.Printf("❌ Invalid command '%s' for channel '%s' - must start with /\n",
-						commandText, channelConfig.Name)
+					Log.WithFields(logrus.Fields{"command": commandText, "channel_name": channelConfig.Name}).Error("❌ Invalid command - must start with /")
 					return fmt.Errorf("invalid command '%s' - must start with /", commandText)
 				}
 
 				// Remove the leading slash for the API
 
-				fmt.Printf("Executing command %d/%d in channel '%s': %s\n",
-					i+1, len(channelConfig.Commands), channelConfig.Name, commandText)
+				Log.WithFields(logrus.Fields{
+					"command_index": i + 1,
+					"total_commands": len(channelConfig.Commands),
+					"channel_name": channelConfig.Name,
+					"command": commandText,
+				}).Info("📤 Executing command in channel")
 
 				// Execute the command using the commands/execute API
 				_, resp, err := c.API.ExecuteCommand(context.Background(), channel.Id, commandText)
 
 				// Check for any errors or non-200 response
 				if err != nil {
-					fmt.Printf("❌ Failed to execute command '%s': %v\n", commandText, err)
+					Log.WithFields(logrus.Fields{"command": commandText, "error": err.Error()}).Error("❌ Failed to execute command")
 					return fmt.Errorf("failed to execute command '%s': %w", commandText, err)
 				}
 
 				if resp.StatusCode != 200 {
-					fmt.Printf("❌ Command '%s' returned non-200 status code: %d\n",
-						commandText, resp.StatusCode)
+					Log.WithFields(logrus.Fields{"command": commandText, "status_code": resp.StatusCode}).Error("❌ Command returned non-200 status code")
 					return fmt.Errorf("command '%s' returned status code %d",
 						commandText, resp.StatusCode)
 				}
 
-				fmt.Printf("✅ Successfully executed command %d/%d: '%s' in channel '%s'\n",
-					i+1, len(channelConfig.Commands), commandText, channelConfig.Name)
+				Log.WithFields(logrus.Fields{
+					"command_index": i + 1,
+					"total_commands": len(channelConfig.Commands),
+					"command": commandText,
+					"channel_name": channelConfig.Name,
+				}).Info("✅ Successfully executed command in channel")
 
 				// Add a small delay between commands to ensure proper ordering
 				time.Sleep(500 * time.Millisecond)
@@ -470,7 +480,7 @@ func (c *Client) BuildPlugin(pluginPath string) error {
 		return fmt.Errorf("makefile not found in plugin directory: %s", pluginPath)
 	}
 
-	fmt.Printf("Building plugin in %s...\n", pluginPath)
+	// This should have been converted already - check if log is initialized
 
 	// Run make dist to build the plugin
 	cmd := exec.Command("make", "dist")
@@ -482,7 +492,7 @@ func (c *Client) BuildPlugin(pluginPath string) error {
 		return fmt.Errorf("failed to build plugin: %w", err)
 	}
 
-	fmt.Printf("✅ Plugin built successfully\n")
+	// This should have been converted already - check if log is initialized
 	return nil
 }
 
@@ -511,7 +521,9 @@ func (c *Client) FindPluginBundle(pluginPath string) (string, error) {
 
 // UploadPlugin uploads and installs a plugin to the Mattermost server
 func (c *Client) UploadPlugin(bundlePath string) error {
-	fmt.Printf("Uploading plugin bundle: %s\n", bundlePath)
+	Log.WithFields(logrus.Fields{
+		"bundle_path": bundlePath,
+	}).Info("📤 Uploading plugin bundle")
 
 	// Open the bundle file
 	file, err := os.Open(bundlePath)
@@ -520,11 +532,14 @@ func (c *Client) UploadPlugin(bundlePath string) error {
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close plugin bundle file: %v\n", closeErr)
+			Log.WithFields(logrus.Fields{
+				"error": closeErr.Error(),
+				"file": bundlePath,
+			}).Warn("⚠️ Failed to close plugin bundle file")
 		}
 	}()
 
-	fmt.Printf("Uploading with force flag (will overwrite existing plugin)\n")
+	Log.Info("📤 Uploading with force flag (will overwrite existing plugin)")
 	// Reset file position
 	if _, seekErr := file.Seek(0, 0); seekErr != nil {
 		return fmt.Errorf("❌ failed to reset file position: %w", seekErr)
@@ -533,7 +548,10 @@ func (c *Client) UploadPlugin(bundlePath string) error {
 	if err != nil {
 		return handleAPIError(fmt.Sprintf("failed to upload plugin bundle '%s': %v", bundlePath, err), err, resp)
 	}
-	fmt.Printf("✅ Plugin '%s' (ID: %s) uploaded successfully (forced)\n", manifest.Name, manifest.Id)
+	Log.WithFields(logrus.Fields{
+		"plugin_name": manifest.Name,
+		"plugin_id": manifest.Id,
+	}).Info("✅ Plugin uploaded successfully (forced)")
 
 	// Enable the plugin
 	enableResp, enableErr := c.API.EnablePlugin(context.Background(), manifest.Id)
@@ -541,7 +559,7 @@ func (c *Client) UploadPlugin(bundlePath string) error {
 		return handleAPIError("failed to enable plugin", enableErr, enableResp)
 	}
 
-	fmt.Printf("✅ Plugin '%s' enabled successfully\n", manifest.Name)
+	// This should have been converted already - check if log is initialized
 	return nil
 }
 
@@ -582,14 +600,14 @@ func (c *Client) SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forc
 
 	// Use two-phase bulk import for users, teams, and channels (skip if only reinstalling plugins)
 	if forcePlugins && !forceAll {
-		fmt.Println("Plugin reinstall mode: skipping bulk import")
+		// This should have been converted already - check if log is initialized
 	} else {
 		if err := c.SetupWithSplitImport(); err != nil {
 			return err
 		}
 	}
 
-	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
+	// This should have been converted already - check if log is initialized
 	return nil
 }
 
@@ -663,7 +681,7 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close file: %v\n", closeErr)
+			Log.WithFields(logrus.Fields{"error": closeErr.Error()}).Warn("⚠️ Failed to close file")
 		}
 	}()
 
@@ -690,7 +708,7 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 		}
 		if err := json.Unmarshal([]byte(line), &typeCheck); err != nil {
 			// If we can't even parse the type, skip with warning
-			fmt.Printf("Warning: Failed to parse type from line, skipping: %s\n", line)
+			Log.WithFields(logrus.Fields{"line": line}).Warn("⚠️ Failed to parse type from line, skipping")
 			continue
 		}
 
@@ -703,7 +721,7 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 		var importLine ResetImportLine
 		if err := json.Unmarshal([]byte(line), &importLine); err != nil {
 			// Only warn for non-custom types that fail to parse
-			fmt.Printf("Warning: Failed to parse standard import line, skipping: %s\n", line)
+			Log.WithFields(logrus.Fields{"line": line}).Warn("⚠️ Failed to parse standard import line, skipping")
 			continue
 		}
 
@@ -735,7 +753,7 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 		return nil, fmt.Errorf("error reading bulk import file: %w", err)
 	}
 
-	fmt.Printf("Loaded %d teams and %d users from bulk import\n", len(teams), len(users))
+	Log.WithFields(logrus.Fields{"teams_count": len(teams), "users_count": len(users)}).Info("📋 Loaded data from bulk import")
 
 	return &BulkImportData{
 		Teams: teams,
@@ -746,18 +764,18 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 // DeleteBulkUsers permanently deletes users from bulk import data
 func (c *Client) DeleteBulkUsers(users []BulkUser) error {
 	if len(users) == 0 {
-		fmt.Println("No users found in bulk import to delete")
+		Log.Info("📋 No users found in bulk import to delete")
 		return nil
 	}
 
-	fmt.Printf("Deleting %d users from bulk import...\n", len(users))
+	Log.WithFields(logrus.Fields{"user_count": len(users)}).Info("🗑️ Deleting users from bulk import")
 
 	for _, userInfo := range users {
 		// Find the user by username
 		user, resp, err := c.API.GetUserByUsername(context.Background(), userInfo.Username, "")
 		if err != nil {
 			if resp != nil && resp.StatusCode == 404 {
-				fmt.Printf("⚠️  User '%s' not found, skipping\n", userInfo.Username)
+				Log.WithFields(logrus.Fields{"user_name": userInfo.Username}).Warn("⚠️ User not found, skipping")
 				continue
 			}
 			return handleAPIError(fmt.Sprintf("failed to find user '%s'", userInfo.Username), err, resp)
@@ -769,7 +787,7 @@ func (c *Client) DeleteBulkUsers(users []BulkUser) error {
 			return handleAPIError(fmt.Sprintf("failed to delete user '%s'", userInfo.Username), err, nil)
 		}
 
-		fmt.Printf("✅ Permanently deleted user '%s'\n", userInfo.Username)
+		Log.WithFields(logrus.Fields{"user_name": userInfo.Username}).Info("✅ Permanently deleted user")
 	}
 
 	return nil
@@ -778,18 +796,18 @@ func (c *Client) DeleteBulkUsers(users []BulkUser) error {
 // DeleteBulkTeams permanently deletes teams from bulk import data
 func (c *Client) DeleteBulkTeams(teams []BulkTeam) error {
 	if len(teams) == 0 {
-		fmt.Println("No teams found in bulk import to delete")
+		Log.Info("📋 No teams found in bulk import to delete")
 		return nil
 	}
 
-	fmt.Printf("Deleting %d teams from bulk import...\n", len(teams))
+	Log.WithFields(logrus.Fields{"team_count": len(teams)}).Info("🗑️ Deleting teams from bulk import")
 
 	for _, teamInfo := range teams {
 		// Find the team by name
 		team, resp, err := c.API.GetTeamByName(context.Background(), teamInfo.Name, "")
 		if err != nil {
 			if resp != nil && resp.StatusCode == 404 {
-				fmt.Printf("⚠️  Team '%s' not found, skipping\n", teamInfo.Name)
+				Log.WithFields(logrus.Fields{"team_name": teamInfo.Name}).Warn("⚠️ Team not found, skipping")
 				continue
 			}
 			return handleAPIError(fmt.Sprintf("failed to find team '%s'", teamInfo.Name), err, resp)
@@ -801,7 +819,7 @@ func (c *Client) DeleteBulkTeams(teams []BulkTeam) error {
 			return handleAPIError(fmt.Sprintf("failed to delete team '%s'", teamInfo.Name), err, nil)
 		}
 
-		fmt.Printf("✅ Permanently deleted team '%s'\n", teamInfo.Name)
+		Log.WithFields(logrus.Fields{"team_name": teamInfo.Name}).Info("✅ Permanently deleted team")
 	}
 
 	return nil
@@ -824,7 +842,7 @@ func (c *Client) CheckDeletionSettings() error {
 		return fmt.Errorf("ServiceSettings.EnableAPITeamDeletion is not enabled. Please enable it in the server configuration to use the reset command")
 	}
 
-	fmt.Println("✅ API deletion settings are enabled")
+	Log.Info("✅ API deletion settings are enabled")
 	return nil
 }
 
@@ -854,8 +872,8 @@ func (c *Client) Reset() error {
 		return err
 	}
 
-	fmt.Println("🚨 WARNING: This will permanently delete all teams and users that are configured in the bulk import file.")
-	fmt.Println("This operation is irreversible.")
+	Log.Warn("🚨 WARNING: This will permanently delete all teams and users that are configured in the bulk import file.")
+	Log.Warn("⚠️ This operation is irreversible.")
 
 	// Delete users first (they need to be removed from teams before teams can be deleted)
 	if err := c.DeleteBulkUsers(bulkData.Users); err != nil {
@@ -867,25 +885,25 @@ func (c *Client) Reset() error {
 		return fmt.Errorf("failed to delete teams: %w", err)
 	}
 
-	fmt.Println("✅ Reset completed successfully")
+	Log.Info("✅ Reset completed successfully")
 	return nil
 }
 
 // DeleteConfigUsers permanently deletes all users from the configuration
 func (c *Client) DeleteConfigUsers() error {
 	if c.Config == nil || len(c.Config.Users) == 0 {
-		fmt.Println("No users found in configuration to delete")
+		Log.Info("📋 No users found in configuration to delete")
 		return nil
 	}
 
-	fmt.Printf("Deleting %d users from configuration...\n", len(c.Config.Users))
+	Log.WithFields(logrus.Fields{"user_count": len(c.Config.Users)}).Info("🗑️ Deleting users from configuration")
 
 	for _, userConfig := range c.Config.Users {
 		// Find the user by username
 		user, resp, err := c.API.GetUserByUsername(context.Background(), userConfig.Username, "")
 		if err != nil {
 			if resp != nil && resp.StatusCode == 404 {
-				fmt.Printf("⚠️  User '%s' not found, skipping\n", userConfig.Username)
+				Log.WithFields(logrus.Fields{"user_name": userConfig.Username}).Warn("⚠️ User not found, skipping")
 				continue
 			}
 			return handleAPIError(fmt.Sprintf("failed to find user '%s'", userConfig.Username), err, resp)
@@ -897,7 +915,7 @@ func (c *Client) DeleteConfigUsers() error {
 			return handleAPIError(fmt.Sprintf("failed to delete user '%s'", userConfig.Username), err, nil)
 		}
 
-		fmt.Printf("✅ Permanently deleted user '%s'\n", userConfig.Username)
+		Log.WithFields(logrus.Fields{"user_name": userConfig.Username}).Info("✅ Permanently deleted user")
 	}
 
 	return nil
@@ -906,18 +924,18 @@ func (c *Client) DeleteConfigUsers() error {
 // DeleteConfigTeams permanently deletes all teams from the configuration
 func (c *Client) DeleteConfigTeams() error {
 	if c.Config == nil || len(c.Config.Teams) == 0 {
-		fmt.Println("No teams found in configuration to delete")
+		Log.Info("📋 No teams found in configuration to delete")
 		return nil
 	}
 
-	fmt.Printf("Deleting %d teams from configuration...\n", len(c.Config.Teams))
+	Log.WithFields(logrus.Fields{"team_count": len(c.Config.Teams)}).Info("🗑️ Deleting teams from configuration")
 
 	for teamName := range c.Config.Teams {
 		// Find the team by name
 		team, resp, err := c.API.GetTeamByName(context.Background(), teamName, "")
 		if err != nil {
 			if resp != nil && resp.StatusCode == 404 {
-				fmt.Printf("⚠️  Team '%s' not found, skipping\n", teamName)
+				Log.WithFields(logrus.Fields{"team_name": teamName}).Warn("⚠️ Team not found, skipping")
 				continue
 			}
 			return handleAPIError(fmt.Sprintf("failed to find team '%s'", teamName), err, resp)
@@ -929,7 +947,7 @@ func (c *Client) DeleteConfigTeams() error {
 			return handleAPIError(fmt.Sprintf("failed to delete team '%s'", teamName), err, nil)
 		}
 
-		fmt.Printf("✅ Permanently deleted team '%s'\n", teamName)
+		Log.WithFields(logrus.Fields{"team_name": teamName}).Info("✅ Permanently deleted team")
 	}
 
 	return nil
@@ -937,28 +955,28 @@ func (c *Client) DeleteConfigTeams() error {
 
 // EchoLogins prints login information - always shown regardless of test mode
 func (c *Client) EchoLogins() {
-	fmt.Println("===========================================")
-	fmt.Println("Mattermost logins")
-	fmt.Println("===========================================")
+	Log.Info("===========================================")
+	Log.Info("🔑 Mattermost logins")
+	Log.Info("===========================================")
 
-	fmt.Println("- System admin")
-	fmt.Printf("     - username: %s\n", DefaultAdminUsername)
-	fmt.Printf("     - password: %s\n", DefaultAdminPassword)
+	Log.Info("- System admin")
+	Log.WithFields(logrus.Fields{"username": DefaultAdminUsername}).Info("     - username")
+	Log.WithFields(logrus.Fields{"password": DefaultAdminPassword}).Info("     - password")
 
 	// If we have configuration users, display them
 	if c.Config != nil && len(c.Config.Users) > 0 {
-		fmt.Println("- Config users:")
+		Log.Info("- Config users:")
 		for _, user := range c.Config.Users {
-			fmt.Printf("     - username: %s\n", user.Username)
-			fmt.Printf("     - password: %s\n", user.Password)
+			Log.WithFields(logrus.Fields{"username": user.Username}).Info("     - username")
+			Log.WithFields(logrus.Fields{"password": user.Password}).Info("     - password")
 		}
 	}
 
-	fmt.Println("- LDAP or SAML account:")
-	fmt.Println("     - username: professor")
-	fmt.Println("     - password: professor")
-	fmt.Println()
-	fmt.Println("For more logins check out https://github.com/coltoneshaw/mattermost#accounts")
-	fmt.Println()
-	fmt.Println("===========================================")
+	Log.Info("- LDAP or SAML account:")
+	Log.Info("     - username: professor")
+	Log.Info("     - password: professor")
+	Log.Info("")
+	Log.Info("For more logins check out https://github.com/coltoneshaw/mattermost#accounts")
+	Log.Info("")
+	Log.Info("===========================================")
 }

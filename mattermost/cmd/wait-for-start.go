@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"fmt"
-	"log"
-
-	mmsetup "github.com/coltoneshaw/demokit/mattermost"
+	"github.com/coltoneshaw/demokit/mattermost"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -18,12 +16,15 @@ This command polls the Mattermost server's ping endpoint until it responds
 successfully or times out. Useful for automation scripts that need to wait
 for the server to be ready before proceeding.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := mmsetup.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
+		client := mattermost.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
 
 		if err := client.WaitForStart(); err != nil {
-			log.Fatalf("Failed to connect to Mattermost: %v", err)
+			mattermost.Log.WithFields(logrus.Fields{
+				"error": err.Error(),
+				"server": serverURL,
+			}).Fatal("Failed to connect to Mattermost")
 		}
-		fmt.Println("✅ Mattermost API is responding successfully")
+		mattermost.Log.Info("✅ Mattermost API is responding successfully")
 	},
 }
 

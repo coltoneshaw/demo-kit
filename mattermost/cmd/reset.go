@@ -3,11 +3,11 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
-	mmsetup "github.com/coltoneshaw/demokit/mattermost"
+	"github.com/coltoneshaw/demokit/mattermost"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -29,12 +29,14 @@ The reset operation requires the Mattermost server to have the following setting
 - ServiceSettings.EnableAPIUserDeletion = true
 - ServiceSettings.EnableAPITeamDeletion = true`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := mmsetup.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
+		client := mattermost.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
 
 		// Load the bulk import data to show what will be deleted
 		data, err := client.LoadBulkImportData()
 		if err != nil {
-			log.Fatalf("Failed to load bulk import data: %v", err)
+			mattermost.Log.WithFields(logrus.Fields{
+				"error": err.Error(),
+			}).Fatal("Failed to load bulk import data")
 		}
 
 		// Show confirmation prompt with summary counts
@@ -55,7 +57,9 @@ The reset operation requires the Mattermost server to have the following setting
 		reader := bufio.NewReader(os.Stdin)
 		input, err := reader.ReadString('\n')
 		if err != nil {
-			log.Fatalf("Failed to read input: %v", err)
+			mattermost.Log.WithFields(logrus.Fields{
+				"error": err.Error(),
+			}).Fatal("Failed to read input")
 		}
 		
 		input = strings.TrimSpace(input)
@@ -68,7 +72,9 @@ The reset operation requires the Mattermost server to have the following setting
 		fmt.Println("Proceeding with reset operation...")
 
 		if err := client.Reset(); err != nil {
-			log.Fatalf("Reset failed: %v", err)
+			mattermost.Log.WithFields(logrus.Fields{
+				"error": err.Error(),
+			}).Fatal("Reset failed")
 		}
 	},
 }
