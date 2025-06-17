@@ -193,8 +193,8 @@ func (c *Client) uploadImportFile(zipPath string) (string, error) {
 	actualFileName := uploadSession.Id + "_" + fileInfo.Name()
 	Log.WithFields(logrus.Fields{
 		"original_file": fileInfo.Name(),
-		"actual_file": actualFileName,
-		"session_id": uploadSession.Id,
+		"actual_file":   actualFileName,
+		"session_id":    uploadSession.Id,
 	}).Info("📤 Uploaded import file")
 	return actualFileName, nil
 }
@@ -234,7 +234,6 @@ func findBulkImportPath() (string, error) {
 	return "", fmt.Errorf("bulk_import.jsonl not found in current directory or parent directory")
 }
 
-
 // SetupWithSplitImport performs setup using two-phase bulk import
 func (c *Client) SetupWithSplitImport() error {
 	return c.SetupWithSplitImportAndForce(false, false)
@@ -271,8 +270,6 @@ func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins b
 
 	return nil
 }
-
-
 
 // importInfrastructure imports teams and channels
 func (c *Client) importInfrastructure(bulkImportPath string) error {
@@ -367,16 +364,16 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 // processChannelCategories processes channel categories
 func (c *Client) processChannelCategories(bulkImportPath string) error {
 	Log.WithFields(logrus.Fields{"file_path": bulkImportPath}).Info("📋 Processing channel categories")
-	
+
 	file, err := os.Open(bulkImportPath)
 	if err != nil {
 		return err
 	}
 	defer closeWithLog(file, "bulk import file")
-	
+
 	categorizedCount := 0
 	errorCount := 0
-	
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -398,9 +395,9 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 					}
 					Log.WithFields(logrus.Fields{
 						"channel_name": channelName,
-						"team_name": categoryImport.Team,
-						"category": categoryImport.Category,
-						"error": err.Error(),
+						"team_name":    categoryImport.Team,
+						"category":     categoryImport.Category,
+						"error":        err.Error(),
 					}).Warn("⚠️ Failed to categorize channel")
 					errorCount++
 				} else {
@@ -409,11 +406,11 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 			}
 		}
 	}
-	
+
 	if categorizedCount > 0 || errorCount > 0 {
 		Log.WithFields(logrus.Fields{
 			"categorized_count": categorizedCount,
-			"error_count": errorCount,
+			"error_count":       errorCount,
 		}).Info("✅ Channel categorization complete")
 	} else {
 		Log.Info("✅ All channels already properly categorized")
@@ -450,10 +447,10 @@ func (c *Client) processCommands(bulkImportPath string) error {
 		if commandImport.Type == "command" {
 			if err := c.executeCommand(commandImport.Command.Team, commandImport.Command.Channel, commandImport.Command.Text); err != nil {
 				Log.WithFields(logrus.Fields{
-					"team_name": commandImport.Command.Team,
+					"team_name":    commandImport.Command.Team,
 					"channel_name": commandImport.Command.Channel,
 					"command_text": commandImport.Command.Text,
-					"error": err.Error(),
+					"error":        err.Error(),
 				}).Warn("⚠️ Failed to execute command")
 			}
 		}
@@ -465,46 +462,52 @@ func (c *Client) processCommands(bulkImportPath string) error {
 // processGitHubPlugin downloads and installs a GitHub plugin
 func (c *Client) processGitHubPlugin(pluginImport PluginImport) error {
 	Log.WithFields(logrus.Fields{
-		"plugin_name": pluginImport.Plugin.Name,
-		"github_repo": pluginImport.Plugin.GithubRepo,
-		"plugin_id": pluginImport.Plugin.PluginID,
+		"plugin_name":   pluginImport.Plugin.Name,
+		"github_repo":   pluginImport.Plugin.GithubRepo,
+		"plugin_id":     pluginImport.Plugin.PluginID,
 		"force_install": pluginImport.Plugin.ForceInstall,
 	}).Info("📦 Processing plugin " + pluginImport.Plugin.Name)
-	
+
 	// Check if already installed unless forced
 	pm := NewPluginManager(c)
 	if !pluginImport.Plugin.ForceInstall && pm.isInstalledByID(pluginImport.Plugin.PluginID) {
 		Log.WithFields(logrus.Fields{
 			"plugin_name": pluginImport.Plugin.Name,
-			"plugin_id": pluginImport.Plugin.PluginID,
+			"plugin_id":   pluginImport.Plugin.PluginID,
 		}).Info("⏭️ Skipping " + pluginImport.Plugin.Name + ": already installed")
 		return nil
 	}
-	
+
 	// Create PluginConfig for compatibility with existing plugin manager
 	pluginConfig := PluginConfig{
 		Name:     pluginImport.Plugin.Name,
 		Repo:     pluginImport.Plugin.GithubRepo,
 		PluginID: pluginImport.Plugin.PluginID,
 	}
-	
+
 	// Download the plugin
+	Log.WithFields(logrus.Fields{
+		"plugin_name": pluginImport.Plugin.Name,
+		"github_repo": pluginImport.Plugin.GithubRepo,
+		"plugin_id":   pluginImport.Plugin.PluginID,
+	}).Info("📥 Downloading plugin from GitHub...")
+
 	if err := pm.downloadPlugin(pluginConfig); err != nil {
 		return fmt.Errorf("failed to download GitHub plugin: %w", err)
 	}
-	
+
 	// Install from plugins directory
 	pluginsDir := "../files/mattermost/plugins"
 	if _, err := os.Stat("files/mattermost/plugins"); err == nil {
 		pluginsDir = "files/mattermost/plugins"
 	}
-	
+
 	// Find the downloaded .tar.gz file
 	files, err := os.ReadDir(pluginsDir)
 	if err != nil {
 		return fmt.Errorf("failed to read plugins directory: %w", err)
 	}
-	
+
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), ".tar.gz") && strings.Contains(file.Name(), pluginImport.Plugin.PluginID) {
 			pluginPath := filepath.Join(pluginsDir, file.Name())
@@ -513,83 +516,112 @@ func (c *Client) processGitHubPlugin(pluginImport PluginImport) error {
 			}
 			Log.WithFields(logrus.Fields{
 				"plugin_name": pluginImport.Plugin.Name,
-				"plugin_id": pluginImport.Plugin.PluginID,
+				"plugin_id":   pluginImport.Plugin.PluginID,
 			}).Info("✅ Successfully installed " + pluginImport.Plugin.Name)
 			return nil
 		}
 	}
-	
+
 	return fmt.Errorf("downloaded plugin file not found for %s", pluginImport.Plugin.Name)
 }
 
 // processLocalPlugin builds and installs a local plugin
 func (c *Client) processLocalPlugin(pluginImport PluginImport) error {
 	Log.WithFields(logrus.Fields{
-		"plugin_name": pluginImport.Plugin.Name,
-		"plugin_path": pluginImport.Plugin.Path,
-		"plugin_id": pluginImport.Plugin.PluginID,
+		"plugin_name":   pluginImport.Plugin.Name,
+		"plugin_path":   pluginImport.Plugin.Path,
+		"plugin_id":     pluginImport.Plugin.PluginID,
 		"force_install": pluginImport.Plugin.ForceInstall,
 	}).Info("📦 Processing plugin " + pluginImport.Plugin.Name)
-	
+
 	// Check if already installed unless forced
 	pm := NewPluginManager(c)
 	if !pluginImport.Plugin.ForceInstall && pm.isInstalledByID(pluginImport.Plugin.PluginID) {
 		Log.WithFields(logrus.Fields{
 			"plugin_name": pluginImport.Plugin.Name,
-			"plugin_id": pluginImport.Plugin.PluginID,
+			"plugin_id":   pluginImport.Plugin.PluginID,
 		}).Info("⏭️ Skipping " + pluginImport.Plugin.Name + ": already installed")
 		return nil
 	}
-	
+
 	// Check if plugin directory exists
 	if _, err := os.Stat(pluginImport.Plugin.Path); os.IsNotExist(err) {
 		return fmt.Errorf("plugin directory not found: %s", pluginImport.Plugin.Path)
 	}
-	
+
 	// Clean if forced install
 	if pluginImport.Plugin.ForceInstall {
 		Log.WithFields(logrus.Fields{
 			"plugin_path": pluginImport.Plugin.Path,
-		}).Info("🧹 Cleaning plugin before rebuild")
+		}).Debug("🧹 Cleaning plugin before rebuild")
 		if err := pm.cleanPlugin(pluginImport.Plugin.Path); err != nil {
 			Log.WithFields(logrus.Fields{
 				"plugin_path": pluginImport.Plugin.Path,
-				"error": err.Error(),
+				"error":       err.Error(),
 			}).Warn("⚠️ Warning: Failed to clean plugin")
 		}
 	}
-	
+
 	// Build the plugin
+	Log.WithFields(logrus.Fields{
+		"plugin_path": pluginImport.Plugin.Path,
+	}).Info("🔨 Building plugin...")
+
 	if err := pm.buildPlugin(pluginImport.Plugin.Path); err != nil {
 		return fmt.Errorf("failed to build local plugin: %w", err)
 	}
-	
-	// Find the built .tar.gz file in plugins directory
-	pluginsDir := "../files/mattermost/plugins"
-	if _, err := os.Stat("files/mattermost/plugins"); err == nil {
-		pluginsDir = "files/mattermost/plugins"
-	}
-	
-	files, err := os.ReadDir(pluginsDir)
+
+	Log.Info("✅ Plugin build completed, looking for built file...")
+
+	// Find the built .tar.gz file in the plugin's dist directory
+	distDir := filepath.Join(pluginImport.Plugin.Path, "dist")
+
+	Log.WithFields(logrus.Fields{
+		"dist_dir": distDir,
+	}).Debug("🔍 Checking plugin dist directory...")
+
+	files, err := os.ReadDir(distDir)
 	if err != nil {
-		return fmt.Errorf("failed to read plugins directory: %w", err)
+		return fmt.Errorf("failed to read plugin dist directory '%s': %w", distDir, err)
 	}
-	
+
+	Log.WithFields(logrus.Fields{
+		"dist_dir":   distDir,
+		"file_count": len(files),
+	}).Debug("🔍 Searching for built plugin file in dist directory...")
+
+	// List all .tar.gz files for debugging
+	var tarFiles []string
 	for _, file := range files {
-		if strings.HasSuffix(file.Name(), ".tar.gz") && strings.Contains(file.Name(), pluginImport.Plugin.PluginID) {
-			pluginPath := filepath.Join(pluginsDir, file.Name())
+		if strings.HasSuffix(file.Name(), ".tar.gz") {
+			tarFiles = append(tarFiles, file.Name())
+		}
+	}
+
+	Log.WithFields(logrus.Fields{
+		"tar_gz_files": tarFiles,
+	}).Debug("📁 Found .tar.gz files in dist directory")
+
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".tar.gz") {
+			pluginPath := filepath.Join(distDir, file.Name())
+			Log.WithFields(logrus.Fields{
+				"found_file": file.Name(),
+				"full_path":  pluginPath,
+			}).Info("📦 Found plugin file in dist directory, installing...")
+
 			if err := pm.uploadPlugin(pluginPath); err != nil {
 				return fmt.Errorf("failed to install local plugin: %w", err)
 			}
 			Log.WithFields(logrus.Fields{
 				"plugin_name": pluginImport.Plugin.Name,
-				"plugin_id": pluginImport.Plugin.PluginID,
+				"plugin_id":   pluginImport.Plugin.PluginID,
 			}).Info("✅ Successfully installed " + pluginImport.Plugin.Name)
 			return nil
 		}
 	}
-	
-	return fmt.Errorf("built plugin file not found for %s", pluginImport.Plugin.Name)
+
+	return fmt.Errorf("built plugin file not found for %s (no .tar.gz files found in dist directory '%s')", pluginImport.Plugin.Name, distDir)
 }
 
 // categorizeChannel categorizes a channel by name
@@ -636,15 +668,15 @@ func (c *Client) executeCommand(teamName, channelName, commandText string) error
 // processPlugins processes plugin entries from bulk import file
 func (c *Client) processPlugins(bulkImportPath string, forcePlugins, forceGitHubPlugins bool) error {
 	Log.Info("📦 Processing plugins from JSONL")
-	
+
 	file, err := os.Open(bulkImportPath)
 	if err != nil {
 		return err
 	}
 	defer closeWithLog(file, "bulk import file")
-	
+
 	var plugins []PluginImport
-	
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -661,16 +693,16 @@ func (c *Client) processPlugins(bulkImportPath string, forcePlugins, forceGitHub
 			plugins = append(plugins, pluginImport)
 		}
 	}
-	
+
 	if len(plugins) == 0 {
 		Log.Info("📦 No plugins found in JSONL")
 		return nil
 	}
-	
+
 	Log.WithFields(logrus.Fields{
 		"plugin_count": len(plugins),
 	}).Info("📦 Found plugins in JSONL")
-	
+
 	// Process plugins in order: GitHub first, then local
 	for _, plugin := range plugins {
 		if plugin.Plugin.Source == "github" {
@@ -679,17 +711,17 @@ func (c *Client) processPlugins(bulkImportPath string, forcePlugins, forceGitHub
 			if forceGitHubPlugins {
 				pluginCopy.Plugin.ForceInstall = true
 			}
-			
+
 			if err := c.processGitHubPlugin(pluginCopy); err != nil {
 				Log.WithFields(logrus.Fields{
 					"plugin_name": plugin.Plugin.Name,
-					"error": err.Error(),
+					"error":       err.Error(),
 				}).Error("❌ Failed to process GitHub plugin")
 				return fmt.Errorf("failed to process GitHub plugin '%s': %w", plugin.Plugin.Name, err)
 			}
 		}
 	}
-	
+
 	for _, plugin := range plugins {
 		if plugin.Plugin.Source == "local" {
 			// Apply force flags: forceGitHubPlugins forces all plugins, forcePlugins forces local plugins
@@ -697,11 +729,11 @@ func (c *Client) processPlugins(bulkImportPath string, forcePlugins, forceGitHub
 			if forceGitHubPlugins || forcePlugins {
 				pluginCopy.Plugin.ForceInstall = true
 			}
-			
+
 			if err := c.processLocalPlugin(pluginCopy); err != nil {
 				Log.WithFields(logrus.Fields{
 					"plugin_name": plugin.Plugin.Name,
-					"error": err.Error(),
+					"error":       err.Error(),
 				}).Error("❌ Failed to process local plugin")
 				return fmt.Errorf("failed to process local plugin '%s': %w", plugin.Plugin.Name, err)
 			}

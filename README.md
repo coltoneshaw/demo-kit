@@ -141,24 +141,60 @@ go build -o mmsetup ./cmd
 
 ### Plugin Management
 
-The setup tool includes intelligent plugin management with version checking and automatic updates:
+The setup tool uses a JSONL-based plugin management system where plugins are defined in `bulk_import.jsonl`:
+
+#### JSONL Plugin Configuration
+
+Plugins are configured as JSON objects in the `bulk_import.jsonl` file:
+
+```json
+{"type": "plugin", "plugin": {"source": "github", "github_repo": "mattermost/mattermost-plugin-playbooks", "plugin_id": "playbooks", "name": "Playbooks", "force_install": false}}
+{"type": "plugin", "plugin": {"source": "local", "path": "./apps/weather-plugin", "plugin_id": "com.coltoneshaw.weather", "name": "Weather Plugin", "force_install": false}}
+```
+
+#### Plugin Configuration Fields
+
+- **`source`** (required): Either "github" or "local"
+- **`github_repo`** (required for GitHub plugins): Repository in "owner/repo" format
+- **`path`** (required for local plugins): Relative path to plugin directory
+- **`plugin_id`** (required): Unique plugin identifier matching the plugin manifest
+- **`name`** (required): Human-readable name for logging
+- **`force_install`** (optional): Whether to force reinstall (default: false)
+
+#### GitHub Plugins
+- Must have GitHub releases with .tar.gz assets
+- Downloads latest release automatically
+- Plugin ID must match the actual plugin manifest ID
+
+#### Local Plugins
+- Must have a Makefile with `clean` and `dist` targets
+- `make dist` must produce a .tar.gz file in the plugin's `dist/` directory
+- Plugin path should be relative to the mmsetup binary location
+
+#### Command Line Options
 
 ```bash
 # Standard setup - skips already installed plugins
 ./mmsetup setup
-
-# Check for plugin updates and install newer versions
-./mmsetup setup --check-updates
 
 # Force reinstall local plugins only
 ./mmsetup setup --reinstall-plugins local
 
 # Force reinstall all plugins (local + GitHub)
 ./mmsetup setup --reinstall-plugins all
-
-# Combine update checking with plugin reinstall
-./mmsetup setup --reinstall-plugins all --check-updates
 ```
+
+#### Adding New Plugins
+
+1. Add a plugin entry to `bulk_import.jsonl`
+2. For GitHub plugins: specify `github_repo` and `plugin_id`
+3. For local plugins: specify `path` and ensure Makefile exists
+4. Run setup command - plugins are processed automatically
+
+#### Processing Order
+1. GitHub plugins are processed first
+2. Local plugins are processed second
+3. Within each type, plugins are processed in JSONL file order
 
 ### Data Management
 
@@ -169,12 +205,13 @@ The setup tool includes intelligent plugin management with version checking and 
 
 ## Features
 
-### Intelligent Plugin Management
+### JSONL-Based Plugin Management
+- **Configuration-Driven**: Plugins defined in `bulk_import.jsonl` for easy management
 - **Automatic Plugin Detection**: Skips already installed plugins to avoid conflicts
-- **Version Checking**: Compares installed plugin versions with GitHub releases
-- **Selective Updates**: Update only when newer versions are available
-- **Local vs GitHub Plugins**: Separate handling for custom local plugins and GitHub releases
-- **Smart Categorization**: Automatically organizes channels using Playbooks API integration
+- **Dual Source Support**: Handles both GitHub releases and local plugin development
+- **Force Installation Options**: Granular control over plugin reinstallation
+- **Smart Processing Order**: GitHub plugins first, then local plugins for optimal dependency handling
+- **Build Integration**: Automatic building of local plugins with Makefile support
 
 ### Robust Data Import
 - **Two-Phase Import**: Separates infrastructure (teams/channels) from user data for better reliability

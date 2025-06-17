@@ -71,6 +71,11 @@ func initLogger() {
 		level = logrus.InfoLevel
 	}
 	
+	// If verbose is enabled, automatically set debug level (unless explicitly overridden)
+	if verbose && logLevel == "info" {
+		level = logrus.DebugLevel
+	}
+	
 	mattermost.InitLogger(&mattermost.LogConfig{
 		Level:   level,
 		Format:  logFormat,
