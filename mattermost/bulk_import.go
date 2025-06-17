@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,6 +39,19 @@ type CommandImport struct {
 		Channel string `json:"channel"`
 		Text    string `json:"text"`
 	} `json:"command"`
+}
+
+// PluginImport represents a plugin import entry
+type PluginImport struct {
+	Type   string `json:"type"`
+	Plugin struct {
+		Source       string `json:"source"`        // "github" or "local"
+		GithubRepo   string `json:"github_repo"`   // For GitHub plugins: "owner/repo"
+		Path         string `json:"path"`          // For local plugins: "../apps/plugin-name"
+		PluginID     string `json:"plugin_id"`     // Plugin ID
+		Name         string `json:"name"`          // Human readable name
+		ForceInstall bool   `json:"force_install"` // Whether to force reinstall
+	} `json:"plugin"`
 }
 
 func closeWithLog(c io.Closer, label string) {
@@ -223,12 +237,21 @@ func findBulkImportPath() (string, error) {
 
 // SetupWithSplitImport performs setup using two-phase bulk import
 func (c *Client) SetupWithSplitImport() error {
+	return c.SetupWithSplitImportAndForce(false, false)
+}
+
+// SetupWithSplitImportAndForce performs setup using two-phase bulk import with force options
+func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins bool) error {
 	bulkImportPath, err := findBulkImportPath()
 	if err != nil {
 		return err
 	}
 
 	Log.Info("🚀 Starting two-phase bulk import")
+
+	if err := c.processPlugins(bulkImportPath, forcePlugins, forceGitHubPlugins); err != nil {
+		return fmt.Errorf("failed to process plugins: %w", err)
+	}
 
 	if err := c.importInfrastructure(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to import infrastructure: %w", err)
@@ -285,6 +308,7 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 	customTypes := map[string]bool{
 		"channel-category": true,
 		"command":          true,
+		"plugin":           true,
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -438,6 +462,136 @@ func (c *Client) processCommands(bulkImportPath string) error {
 	return scanner.Err()
 }
 
+// processGitHubPlugin downloads and installs a GitHub plugin
+func (c *Client) processGitHubPlugin(pluginImport PluginImport) error {
+	Log.WithFields(logrus.Fields{
+		"plugin_name": pluginImport.Plugin.Name,
+		"github_repo": pluginImport.Plugin.GithubRepo,
+		"plugin_id": pluginImport.Plugin.PluginID,
+		"force_install": pluginImport.Plugin.ForceInstall,
+	}).Info("📦 Processing plugin " + pluginImport.Plugin.Name)
+	
+	// Check if already installed unless forced
+	pm := NewPluginManager(c)
+	if !pluginImport.Plugin.ForceInstall && pm.isInstalledByID(pluginImport.Plugin.PluginID) {
+		Log.WithFields(logrus.Fields{
+			"plugin_name": pluginImport.Plugin.Name,
+			"plugin_id": pluginImport.Plugin.PluginID,
+		}).Info("⏭️ Skipping " + pluginImport.Plugin.Name + ": already installed")
+		return nil
+	}
+	
+	// Create PluginConfig for compatibility with existing plugin manager
+	pluginConfig := PluginConfig{
+		Name:     pluginImport.Plugin.Name,
+		Repo:     pluginImport.Plugin.GithubRepo,
+		PluginID: pluginImport.Plugin.PluginID,
+	}
+	
+	// Download the plugin
+	if err := pm.downloadPlugin(pluginConfig); err != nil {
+		return fmt.Errorf("failed to download GitHub plugin: %w", err)
+	}
+	
+	// Install from plugins directory
+	pluginsDir := "../files/mattermost/plugins"
+	if _, err := os.Stat("files/mattermost/plugins"); err == nil {
+		pluginsDir = "files/mattermost/plugins"
+	}
+	
+	// Find the downloaded .tar.gz file
+	files, err := os.ReadDir(pluginsDir)
+	if err != nil {
+		return fmt.Errorf("failed to read plugins directory: %w", err)
+	}
+	
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".tar.gz") && strings.Contains(file.Name(), pluginImport.Plugin.PluginID) {
+			pluginPath := filepath.Join(pluginsDir, file.Name())
+			if err := pm.uploadPlugin(pluginPath); err != nil {
+				return fmt.Errorf("failed to install GitHub plugin: %w", err)
+			}
+			Log.WithFields(logrus.Fields{
+				"plugin_name": pluginImport.Plugin.Name,
+				"plugin_id": pluginImport.Plugin.PluginID,
+			}).Info("✅ Successfully installed " + pluginImport.Plugin.Name)
+			return nil
+		}
+	}
+	
+	return fmt.Errorf("downloaded plugin file not found for %s", pluginImport.Plugin.Name)
+}
+
+// processLocalPlugin builds and installs a local plugin
+func (c *Client) processLocalPlugin(pluginImport PluginImport) error {
+	Log.WithFields(logrus.Fields{
+		"plugin_name": pluginImport.Plugin.Name,
+		"plugin_path": pluginImport.Plugin.Path,
+		"plugin_id": pluginImport.Plugin.PluginID,
+		"force_install": pluginImport.Plugin.ForceInstall,
+	}).Info("📦 Processing plugin " + pluginImport.Plugin.Name)
+	
+	// Check if already installed unless forced
+	pm := NewPluginManager(c)
+	if !pluginImport.Plugin.ForceInstall && pm.isInstalledByID(pluginImport.Plugin.PluginID) {
+		Log.WithFields(logrus.Fields{
+			"plugin_name": pluginImport.Plugin.Name,
+			"plugin_id": pluginImport.Plugin.PluginID,
+		}).Info("⏭️ Skipping " + pluginImport.Plugin.Name + ": already installed")
+		return nil
+	}
+	
+	// Check if plugin directory exists
+	if _, err := os.Stat(pluginImport.Plugin.Path); os.IsNotExist(err) {
+		return fmt.Errorf("plugin directory not found: %s", pluginImport.Plugin.Path)
+	}
+	
+	// Clean if forced install
+	if pluginImport.Plugin.ForceInstall {
+		Log.WithFields(logrus.Fields{
+			"plugin_path": pluginImport.Plugin.Path,
+		}).Info("🧹 Cleaning plugin before rebuild")
+		if err := pm.cleanPlugin(pluginImport.Plugin.Path); err != nil {
+			Log.WithFields(logrus.Fields{
+				"plugin_path": pluginImport.Plugin.Path,
+				"error": err.Error(),
+			}).Warn("⚠️ Warning: Failed to clean plugin")
+		}
+	}
+	
+	// Build the plugin
+	if err := pm.buildPlugin(pluginImport.Plugin.Path); err != nil {
+		return fmt.Errorf("failed to build local plugin: %w", err)
+	}
+	
+	// Find the built .tar.gz file in plugins directory
+	pluginsDir := "../files/mattermost/plugins"
+	if _, err := os.Stat("files/mattermost/plugins"); err == nil {
+		pluginsDir = "files/mattermost/plugins"
+	}
+	
+	files, err := os.ReadDir(pluginsDir)
+	if err != nil {
+		return fmt.Errorf("failed to read plugins directory: %w", err)
+	}
+	
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".tar.gz") && strings.Contains(file.Name(), pluginImport.Plugin.PluginID) {
+			pluginPath := filepath.Join(pluginsDir, file.Name())
+			if err := pm.uploadPlugin(pluginPath); err != nil {
+				return fmt.Errorf("failed to install local plugin: %w", err)
+			}
+			Log.WithFields(logrus.Fields{
+				"plugin_name": pluginImport.Plugin.Name,
+				"plugin_id": pluginImport.Plugin.PluginID,
+			}).Info("✅ Successfully installed " + pluginImport.Plugin.Name)
+			return nil
+		}
+	}
+	
+	return fmt.Errorf("built plugin file not found for %s", pluginImport.Plugin.Name)
+}
+
 // categorizeChannel categorizes a channel by name
 func (c *Client) categorizeChannel(teamName, channelName, categoryName string) error {
 	team, resp, err := c.API.GetTeamByName(context.Background(), teamName, "")
@@ -477,4 +631,82 @@ func (c *Client) executeCommand(teamName, channelName, commandText string) error
 	}
 
 	return fmt.Errorf("channel '%s' not found in team '%s'", channelName, teamName)
+}
+
+// processPlugins processes plugin entries from bulk import file
+func (c *Client) processPlugins(bulkImportPath string, forcePlugins, forceGitHubPlugins bool) error {
+	Log.Info("📦 Processing plugins from JSONL")
+	
+	file, err := os.Open(bulkImportPath)
+	if err != nil {
+		return err
+	}
+	defer closeWithLog(file, "bulk import file")
+	
+	var plugins []PluginImport
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var pluginImport PluginImport
+		if err := json.Unmarshal([]byte(line), &pluginImport); err != nil {
+			continue
+		}
+
+		if pluginImport.Type == "plugin" {
+			plugins = append(plugins, pluginImport)
+		}
+	}
+	
+	if len(plugins) == 0 {
+		Log.Info("📦 No plugins found in JSONL")
+		return nil
+	}
+	
+	Log.WithFields(logrus.Fields{
+		"plugin_count": len(plugins),
+	}).Info("📦 Found plugins in JSONL")
+	
+	// Process plugins in order: GitHub first, then local
+	for _, plugin := range plugins {
+		if plugin.Plugin.Source == "github" {
+			// Apply force flags: forceGitHubPlugins forces all plugins
+			pluginCopy := plugin
+			if forceGitHubPlugins {
+				pluginCopy.Plugin.ForceInstall = true
+			}
+			
+			if err := c.processGitHubPlugin(pluginCopy); err != nil {
+				Log.WithFields(logrus.Fields{
+					"plugin_name": plugin.Plugin.Name,
+					"error": err.Error(),
+				}).Error("❌ Failed to process GitHub plugin")
+				return fmt.Errorf("failed to process GitHub plugin '%s': %w", plugin.Plugin.Name, err)
+			}
+		}
+	}
+	
+	for _, plugin := range plugins {
+		if plugin.Plugin.Source == "local" {
+			// Apply force flags: forceGitHubPlugins forces all plugins, forcePlugins forces local plugins
+			pluginCopy := plugin
+			if forceGitHubPlugins || forcePlugins {
+				pluginCopy.Plugin.ForceInstall = true
+			}
+			
+			if err := c.processLocalPlugin(pluginCopy); err != nil {
+				Log.WithFields(logrus.Fields{
+					"plugin_name": plugin.Plugin.Name,
+					"error": err.Error(),
+				}).Error("❌ Failed to process local plugin")
+				return fmt.Errorf("failed to process local plugin '%s': %w", plugin.Plugin.Name, err)
+			}
+		}
+	}
+
+	return scanner.Err()
 }

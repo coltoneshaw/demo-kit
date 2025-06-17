@@ -1,4 +1,9 @@
 {"type": "version", "version": 1}
+{"type": "plugin", "plugin": {"source": "github", "github_repo": "mattermost/mattermost-plugin-playbooks", "plugin_id": "playbooks", "name": "Playbooks", "force_install": false}}
+{"type": "plugin", "plugin": {"source": "github", "github_repo": "mattermost/mattermost-plugin-ai", "plugin_id": "mattermost-ai", "name": "Mattermost Agents", "force_install": false}}
+{"type": "plugin", "plugin": {"source": "local", "path": "./apps/weather-plugin", "plugin_id": "com.coltoneshaw.weather", "name": "Weather Plugin", "force_install": false}}
+{"type": "plugin", "plugin": {"source": "local", "path": "./apps/flightaware-plugin", "plugin_id": "com.coltoneshaw.flightaware", "name": "FlightAware Plugin", "force_install": false}}
+{"type": "plugin", "plugin": {"source": "local", "path": "./apps/missionops-plugin", "plugin_id": "com.coltoneshaw.missionops", "name": "Mission Operations Plugin", "force_install": false}}
 {"type": "team", "team": {"name": "usaf-team", "display_name": "USAF Command", "type": "O", "description": "United States Air Force Command and Operations"}}
 {"type": "channel", "channel": {"team": "usaf-team", "name": "official-announcements", "display_name": "Official Announcements", "type": "O", "purpose": "Important announcements from Command", "header": "📢 Official Command announcements"}}
 {"type": "channel", "channel": {"team": "usaf-team", "name": "strategic-planning", "display_name": "Strategic Planning", "type": "P", "purpose": "Long-term planning and strategy discussions"}}

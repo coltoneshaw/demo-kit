@@ -593,21 +593,11 @@ func (c *Client) SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forc
 		return err
 	}
 
-	// Download and install latest plugins (no config dependency)
-	if err := c.PluginManager.SetupLatestPluginsWithUpdate(nil, forcePlugins, forceGitHubPlugins, checkUpdates); err != nil {
-		return fmt.Errorf("failed to setup plugins: %w", err)
+	// Use two-phase bulk import for plugins, users, teams, and channels
+	if err := c.SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins); err != nil {
+		return err
 	}
 
-	// Use two-phase bulk import for users, teams, and channels (skip if only reinstalling plugins)
-	if forcePlugins && !forceAll {
-		// This should have been converted already - check if log is initialized
-	} else {
-		if err := c.SetupWithSplitImport(); err != nil {
-			return err
-		}
-	}
-
-	// This should have been converted already - check if log is initialized
 	return nil
 }
 

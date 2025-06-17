@@ -18,7 +18,7 @@ This is a demo kit for Mattermost with integrated weather and flight tracking ap
 - `make logs` - Follow logs
 
 ### Mattermost Setup Tool
-- `cd mattermost && go build -o mmsetup ./cmd` - Build the setup tool
+- `make build` - Build the setup tool (ALWAYS use this instead of `go build`)
 - `./mmsetup setup` - Run setup with default config and intelligent plugin management
 - `./mmsetup setup --config /path/to/config.json` - Run setup with custom config
 - `./mmsetup setup --check-updates` - Check for and install newer plugin versions
@@ -80,3 +80,22 @@ This is a demo kit for Mattermost with integrated weather and flight tracking ap
 - Configuration files for various services are stored in the `/files` directory
 - Custom scripts for initialization are in the `/scripts` directory
 - Environment variables are defined in `/files/env_vars.env`
+
+## Build Instructions
+
+**CRITICAL**: 
+- **ALWAYS** run `make build` from the project root directory (`/Users/coltonshaw/development/demo-kit/`)
+- **NEVER** use `go build` directly 
+- **NEVER** use build commands from subdirectories like `/mattermost/` when building the core mattermost cli tool.
+
+The `make build` command from the root directory:
+- Runs linting and tests
+- Verifies modules
+- Builds the `mmsetup` binary to `./bin/mmsetup`
+- Follows proper project build standards
+
+**Example**:
+```bash
+cd /Users/coltonshaw/development/demo-kit
+make build
+```
