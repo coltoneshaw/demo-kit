@@ -8,7 +8,6 @@ import (
 )
 
 var (
-	useBulkImport     bool
 	reinstallPlugins  string
 	checkUpdates      bool
 )
@@ -25,14 +24,12 @@ This command will:
 - Execute any configured channel commands
 
 The setup process uses the connection flags to connect to the target Mattermost server.
-By default, it uses a two-phase bulk import (infrastructure first, then users).
+It uses a two-phase bulk import system (infrastructure first, then users) for optimal reliability.
 
 Plugin Options:
   --reinstall-plugins local   Rebuild and redeploy custom local plugins only
   --reinstall-plugins all     Rebuild all plugins and redeploy everything
-  --check-updates             Check for and install newer plugin versions from GitHub
-
-Use --bulk-import to use the original single-phase bulk import instead.`,
+  --check-updates             Check for and install newer plugin versions from GitHub`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client := mmsetup.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
 
@@ -45,23 +42,14 @@ Use --bulk-import to use the original single-phase bulk import instead.`,
 		forceGitHubPlugins := reinstallPlugins == "all"
 		forceAll := false // Data import forcing would need a separate flag
 
-		if useBulkImport {
-			if err := client.SetupBulkWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates); err != nil {
-				log.Fatalf("Bulk setup failed: %v", err)
-			}
-		} else {
-			if err := client.SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates); err != nil {
-				log.Fatalf("Setup failed: %v", err)
-			}
+		if err := client.SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates); err != nil {
+			log.Fatalf("Setup failed: %v", err)
 		}
 	},
 }
 
 func init() {
 	RootCmd.AddCommand(setupCmd)
-	
-	// Add the bulk import flag
-	setupCmd.Flags().BoolVar(&useBulkImport, "bulk-import", false, "Use bulk import API instead of individual API calls")
 	
 	// Add the reinstall-plugins flag
 	setupCmd.Flags().StringVar(&reinstallPlugins, "reinstall-plugins", "", "Plugin reinstall options: 'local' (rebuild custom plugins only), 'all' (rebuild all plugins)")

@@ -55,14 +55,13 @@ go build -o mmsetup ./cmd
 ./mmsetup setup --reinstall-plugins all --check-updates
 ```
 
-### Data Import Options
+### Data Import
+
+The setup tool uses a two-phase import system for optimal reliability:
 
 ```bash
-# Two-phase bulk import (recommended) - infrastructure first, then users
+# Two-phase import - infrastructure first, then users
 ./mmsetup setup
-
-# Single-phase bulk import - traditional method
-./mmsetup setup --bulk-import
 ```
 
 ### Data Management
@@ -102,18 +101,13 @@ You can configure the tool using command-line flags:
 - `--reinstall-plugins all`: Forces reinstall of both local and GitHub plugins
 - Separate from data import operations for better control
 
-### Bulk Import System
+### Data Import System
 
-#### Two-Phase Import (Default)
+#### Two-Phase Import Process
 1. **Infrastructure Phase**: Teams and channels created first
 2. **Channel Categorization**: Organizes channels using Playbooks API
 3. **User Phase**: Users imported and added to teams/channels
 4. **Command Execution**: Slash commands executed in appropriate channels
-
-#### Single-Phase Import (`--bulk-import`)
-- Traditional bulk import method
-- All data imported simultaneously
-- Useful for specific deployment scenarios
 
 #### Custom Data Types
 - **Channel Categories**: Automatically organizes channels into sidebar categories
@@ -156,7 +150,7 @@ The reset command includes comprehensive safety measures:
 3. **Installation**: Uploads and enables plugins via Mattermost API
 4. **Version Tracking**: Maintains state to avoid unnecessary reinstalls
 
-### Bulk Import Process
+### Data Import Process
 1. **File Parsing**: Reads JSONL files and separates by data type
 2. **Zip Creation**: Packages data for Mattermost import API
 3. **Upload Session**: Transfers files using proper session management

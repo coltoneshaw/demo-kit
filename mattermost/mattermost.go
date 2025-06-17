@@ -584,7 +584,7 @@ func (c *Client) SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forc
 	if forcePlugins && !forceAll {
 		fmt.Println("Plugin reinstall mode: skipping bulk import")
 	} else {
-		if err := c.SetupWithSplitImportForce(forceAll); err != nil {
+		if err := c.SetupWithSplitImport(); err != nil {
 			return err
 		}
 	}
@@ -593,53 +593,6 @@ func (c *Client) SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forc
 	return nil
 }
 
-// SetupBulk performs the main setup using bulk import instead of individual API calls
-func (c *Client) SetupBulk() error {
-	return c.SetupBulkWithForce(false, false, false)
-}
-
-// SetupBulkWithForce performs the main setup using bulk import with force options
-func (c *Client) SetupBulkWithForce(forcePlugins, forceGitHubPlugins, forceAll bool) error {
-	return c.SetupBulkWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, false)
-}
-
-// SetupBulkWithForceAndUpdates performs the main setup using bulk import with force options and update checking
-func (c *Client) SetupBulkWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates bool) error {
-	// Safety check - make sure the client and API are properly initialized
-	if c == nil || c.API == nil {
-		return fmt.Errorf("client not properly initialized")
-	}
-
-	if err := c.WaitForStart(); err != nil {
-		return err
-	}
-
-	if err := c.Login(); err != nil {
-		return err
-	}
-
-	// Verify the server is licensed before proceeding with setup
-	if err := c.CheckLicense(); err != nil {
-		return err
-	}
-
-	// Download and install latest plugins (no config dependency)
-	if err := c.PluginManager.SetupLatestPluginsWithUpdate(nil, forcePlugins, forceGitHubPlugins, checkUpdates); err != nil {
-		return fmt.Errorf("failed to setup plugins: %w", err)
-	}
-
-	// Use bulk import for users, teams, and channels (skip if only reinstalling plugins)
-	if forcePlugins && !forceAll {
-		fmt.Println("Plugin reinstall mode: skipping bulk import")
-	} else {
-		if err := c.SetupWithBulkImportForce(forceAll); err != nil {
-			return err
-		}
-	}
-
-	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
-	return nil
-}
 
 // BulkImportData represents the parsed data from bulk_import.jsonl
 type BulkImportData struct {

@@ -24,7 +24,6 @@ This is a demo kit for Mattermost with integrated weather and flight tracking ap
 - `./mmsetup setup --check-updates` - Check for and install newer plugin versions
 - `./mmsetup setup --reinstall-plugins local` - Force rebuild local plugins only
 - `./mmsetup setup --reinstall-plugins all` - Force reinstall all plugins
-- `./mmsetup setup --bulk-import` - Use single-phase bulk import method
 - `./mmsetup help-config` - Show configuration file help
 - `./mmsetup echo-logins` - Display login information
 - `./mmsetup reset` - Reset all demo data with confirmation prompt

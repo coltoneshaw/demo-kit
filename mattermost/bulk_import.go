@@ -215,16 +215,6 @@ func findBulkImportPath() (string, error) {
 	return "", fmt.Errorf("bulk_import.jsonl not found in current directory or parent directory")
 }
 
-// SetupWithBulkImport performs setup using bulk import (single-phase)
-func (c *Client) SetupWithBulkImport() error {
-	bulkImportPath, err := findBulkImportPath()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Using bulk import file: %s\n", bulkImportPath)
-	return c.ImportBulkData(bulkImportPath)
-}
 
 // SetupWithSplitImport performs setup using two-phase bulk import
 func (c *Client) SetupWithSplitImport() error {
@@ -254,52 +244,7 @@ func (c *Client) SetupWithSplitImport() error {
 	return nil
 }
 
-// SetupWithSplitImportForce performs setup using two-phase bulk import with force option
-func (c *Client) SetupWithSplitImportForce(force bool) error {
-	if !force {
-		return c.SetupWithSplitImport()
-	}
 
-	fmt.Println("Force mode: rebuilding all data with two-phase bulk import...")
-	bulkImportPath, err := findBulkImportPath()
-	if err != nil {
-		return err
-	}
-
-	// Force rebuild - process everything regardless of existing state
-	if err := c.importInfrastructure(bulkImportPath); err != nil {
-		return fmt.Errorf("failed to import infrastructure: %w", err)
-	}
-
-	if err := c.processChannelCategories(bulkImportPath); err != nil {
-		return fmt.Errorf("failed to process channel categories: %w", err)
-	}
-
-	if err := c.importUsers(bulkImportPath); err != nil {
-		return fmt.Errorf("failed to import users: %w", err)
-	}
-
-	if err := c.processCommands(bulkImportPath); err != nil {
-		return fmt.Errorf("failed to process commands: %w", err)
-	}
-
-	return nil
-}
-
-// SetupWithBulkImportForce performs setup using bulk import with force option  
-func (c *Client) SetupWithBulkImportForce(force bool) error {
-	if !force {
-		return c.SetupWithBulkImport()
-	}
-
-	fmt.Println("Force mode: rebuilding all data with single-phase bulk import...")
-	bulkImportPath, err := findBulkImportPath()
-	if err != nil {
-		return err
-	}
-
-	return c.ImportBulkData(bulkImportPath)
-}
 
 // importInfrastructure imports teams and channels
 func (c *Client) importInfrastructure(bulkImportPath string) error {

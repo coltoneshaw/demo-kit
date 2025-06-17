@@ -165,9 +165,6 @@ The setup tool includes intelligent plugin management with version checking and 
 ```bash
 # Reset all teams and users (with confirmation prompt)
 ./mmsetup reset
-
-# Use bulk import method instead of individual API calls
-./mmsetup setup --bulk-import
 ```
 
 ## Features
@@ -179,7 +176,7 @@ The setup tool includes intelligent plugin management with version checking and 
 - **Local vs GitHub Plugins**: Separate handling for custom local plugins and GitHub releases
 - **Smart Categorization**: Automatically organizes channels using Playbooks API integration
 
-### Robust Bulk Import
+### Robust Data Import
 - **Two-Phase Import**: Separates infrastructure (teams/channels) from user data for better reliability
 - **Custom Type Support**: Handles channel categories and commands alongside standard Mattermost data
 - **Error Recovery**: Continues processing even if individual items fail
