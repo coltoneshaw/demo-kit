@@ -637,7 +637,7 @@ func (c *Client) categorizeChannel(teamName, channelName, categoryName string) e
 
 	for _, channel := range channels {
 		if channel.Name == channelName {
-			return c.categorizeChannelAPI(channel.Id, categoryName)
+			return c.categorizeChannelAPI(channel.Id, channel.Name, categoryName)
 		}
 	}
 

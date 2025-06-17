@@ -164,7 +164,7 @@ func (c *Client) CheckLicense() error {
 // Returns nil if the server starts successfully, or an error if the timeout is reached.
 func (c *Client) WaitForStart() error {
 	Log.Info("🚀 Waiting for Mattermost server to start...")
-	
+
 	// Progress indicators
 	progressChars := []string{"-", "\\", "|", "/"}
 
@@ -193,7 +193,7 @@ func (c *Client) WaitForStart() error {
 }
 
 // categorizeChannelAPI implements channel categorization using the Playbooks API
-func (c *Client) categorizeChannelAPI(channelID string, categoryName string) error {
+func (c *Client) categorizeChannelAPI(channelID string, channelName string, categoryName string) error {
 	if channelID == "" || categoryName == "" {
 		return fmt.Errorf("channel ID and category name are required")
 	}
@@ -205,14 +205,14 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 		return fmt.Errorf("failed to create check request: %w", err)
 	}
 	checkReq.Header.Set("Authorization", "Bearer "+c.API.AuthToken)
-	
+
 	client := &http.Client{}
 	checkResp, err := client.Do(checkReq)
 	if err != nil {
 		return fmt.Errorf("failed to check existing actions: %w", err)
 	}
 	defer func() { _ = checkResp.Body.Close() }()
-	
+
 	if checkResp.StatusCode == http.StatusOK {
 		// Channel already has actions, check existing categorization
 		body, _ := io.ReadAll(checkResp.Body)
@@ -223,7 +223,9 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 	}
 
 	// Log only when we're actually going to create a new categorization action
-	Log.WithFields(logrus.Fields{"channel_id": channelID, "category_name": categoryName}).Info("📋 Categorizing channel")
+	Log.WithFields(logrus.Fields{
+		"channel_id": channelID,
+	}).Debug(fmt.Sprintf("📋 Categorizing %s into %s", channelName, categoryName))
 
 	// Construct the URL for the categorize channel API
 	url := fmt.Sprintf("%s/plugins/playbooks/api/v0/actions/channels/%s",
@@ -284,10 +286,11 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 		return fmt.Errorf("categorize request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	Log.WithFields(logrus.Fields{"category_name": categoryName}).Info("✅ Successfully categorized channel using Playbooks API")
+	Log.WithFields(logrus.Fields{
+		"channel_id": channelID,
+	}).Info(fmt.Sprintf("✅ Successfully categorized %s into %s", channelName, categoryName))
 	return nil
 }
-
 
 // SetupChannelCommands executes specified slash commands in channels sequentially
 // If any command fails, the entire setup process will abort
@@ -367,10 +370,10 @@ func (c *Client) SetupChannelCommands() error {
 				// Remove the leading slash for the API
 
 				Log.WithFields(logrus.Fields{
-					"command_index": i + 1,
+					"command_index":  i + 1,
 					"total_commands": len(channelConfig.Commands),
-					"channel_name": channelConfig.Name,
-					"command": commandText,
+					"channel_name":   channelConfig.Name,
+					"command":        commandText,
 				}).Info("📤 Executing command in channel")
 
 				// Execute the command using the commands/execute API
@@ -389,10 +392,10 @@ func (c *Client) SetupChannelCommands() error {
 				}
 
 				Log.WithFields(logrus.Fields{
-					"command_index": i + 1,
+					"command_index":  i + 1,
 					"total_commands": len(channelConfig.Commands),
-					"command": commandText,
-					"channel_name": channelConfig.Name,
+					"command":        commandText,
+					"channel_name":   channelConfig.Name,
 				}).Info("✅ Successfully executed command in channel")
 
 				// Add a small delay between commands to ensure proper ordering
@@ -534,7 +537,7 @@ func (c *Client) UploadPlugin(bundlePath string) error {
 		if closeErr := file.Close(); closeErr != nil {
 			Log.WithFields(logrus.Fields{
 				"error": closeErr.Error(),
-				"file": bundlePath,
+				"file":  bundlePath,
 			}).Warn("⚠️ Failed to close plugin bundle file")
 		}
 	}()
@@ -550,7 +553,7 @@ func (c *Client) UploadPlugin(bundlePath string) error {
 	}
 	Log.WithFields(logrus.Fields{
 		"plugin_name": manifest.Name,
-		"plugin_id": manifest.Id,
+		"plugin_id":   manifest.Id,
 	}).Info("✅ Plugin uploaded successfully (forced)")
 
 	// Enable the plugin
@@ -600,7 +603,6 @@ func (c *Client) SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forc
 
 	return nil
 }
-
 
 // BulkImportData represents the parsed data from bulk_import.jsonl
 type BulkImportData struct {
