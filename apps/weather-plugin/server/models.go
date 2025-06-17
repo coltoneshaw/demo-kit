@@ -35,7 +35,6 @@ type Subscription struct {
 	UserID          string        `json:"user_id"`
 	UpdateFrequency int64         `json:"update_frequency"`
 	LastUpdated     time.Time     `json:"last_updated"`
-	StopChan        chan struct{} `json:"-"`
 }
 
 var WeatherCodeDescription = map[int]string{

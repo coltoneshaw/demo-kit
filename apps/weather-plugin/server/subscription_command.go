@@ -90,7 +90,6 @@ func (sc *SubscriptionCommand) ExecuteSubscribe(args *model.CommandArgs, command
 		UserID:          args.UserId,
 		UpdateFrequency: subscribeArgs.UpdateFrequency,
 		LastUpdated:     time.Now(),
-		StopChan:        make(chan struct{}),
 	}
 
 	sc.subscriptionManager.AddSubscription(subscription)

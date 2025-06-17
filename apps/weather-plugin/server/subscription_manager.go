@@ -13,6 +13,7 @@ import (
 type SubscriptionManager struct {
 	client         *pluginapi.Client
 	subscriptions  map[string]*Subscription
+	jobs           map[string]chan struct{} // Track running subscription jobs
 	mutex          sync.RWMutex
 	weatherService *WeatherService
 	formatter      *WeatherFormatter
@@ -23,6 +24,7 @@ func NewSubscriptionManager(client *pluginapi.Client, weatherService *WeatherSer
 	sm := &SubscriptionManager{
 		client:         client,
 		subscriptions:  make(map[string]*Subscription),
+		jobs:           make(map[string]chan struct{}),
 		weatherService: weatherService,
 		formatter:      formatter,
 		messageService: messageService,
@@ -44,16 +46,28 @@ func (sm *SubscriptionManager) RemoveSubscription(id string) bool {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 	
-	sub, exists := sm.subscriptions[id]
+	_, exists := sm.subscriptions[id]
 	if exists {
-		if sub.StopChan != nil {
-			close(sub.StopChan)
-		}
+		// Stop the subscription job if running
+		sm.stopSubscriptionJob(id)
 		delete(sm.subscriptions, id)
 		sm.saveSubscriptions()
 		return true
 	}
 	return false
+}
+
+// stopSubscriptionJob stops a subscription job if it's running
+func (sm *SubscriptionManager) stopSubscriptionJob(id string) {
+	// Check if job exists
+	stopChan, exists := sm.jobs[id]
+	if !exists {
+		return // Job not running
+	}
+
+	// Signal job to stop
+	close(stopChan)
+	delete(sm.jobs, id)
 }
 
 func (sm *SubscriptionManager) GetSubscription(id string) (*Subscription, bool) {
@@ -97,6 +111,12 @@ func (sm *SubscriptionManager) StartSubscription(sub *Subscription) {
 		sm.cleanupInvalidSubscription(sub, "channel no longer exists")
 		return
 	}
+
+	// Create and store the stop channel for this job
+	sm.mutex.Lock()
+	stopChan := make(chan struct{})
+	sm.jobs[sub.ID] = stopChan
+	sm.mutex.Unlock()
 
 	// Get initial weather data
 	weatherData, err := sm.weatherService.GetWeatherData(sub.Location)
@@ -170,7 +190,7 @@ func (sm *SubscriptionManager) StartSubscription(sub *Subscription) {
 
 			sub.LastUpdated = time.Now()
 
-		case <-sub.StopChan:
+		case <-stopChan:
 			sm.client.Log.Info("Stopping subscription", "subscription_id", sub.ID)
 			return
 		}
@@ -181,10 +201,8 @@ func (sm *SubscriptionManager) StopAll() {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 	
-	for _, sub := range sm.subscriptions {
-		if sub.StopChan != nil {
-			close(sub.StopChan)
-		}
+	for id := range sm.jobs {
+		sm.stopSubscriptionJob(id)
 	}
 }
 
@@ -221,11 +239,12 @@ func (sm *SubscriptionManager) loadSubscriptions() {
 	
 	sm.mutex.Lock()
 	sm.subscriptions = subscriptions
-	
-	for _, sub := range sm.subscriptions {
-		sub.StopChan = make(chan struct{})
-	}
 	sm.mutex.Unlock()
+	
+	// Start subscriptions for all loaded subscriptions
+	for _, sub := range subscriptions {
+		go sm.StartSubscription(sub)
+	}
 	
 	sm.client.Log.Info("Loaded subscriptions", "count", len(subscriptions))
 }
@@ -244,12 +263,7 @@ func (sm *SubscriptionManager) cleanupInvalidSubscription(sub *Subscription, rea
 		"location", sub.Location,
 		"reason", reason)
 	
-	// Stop the subscription if it's running
-	if sub.StopChan != nil {
-		close(sub.StopChan)
-	}
-	
-	// Remove from subscriptions map
+	// Remove from subscriptions map (this will also stop the job)
 	sm.RemoveSubscription(sub.ID)
 	
 	// Try to notify the user about the cleanup if possible

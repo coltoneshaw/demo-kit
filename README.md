@@ -116,7 +116,7 @@ Each channel in a team's `channels` array has the following properties:
 
 ## Usage
 
-### Building
+### Building the Setup Tool
 
 ```bash
 cd mattermost
@@ -137,6 +137,22 @@ go build -o mmsetup ./cmd
 
 # Show login information
 ./mmsetup echo-logins
+```
+
+### Running Development Commands
+
+**Important**: Development commands should be run from the repository root directory:
+
+```bash
+# Run setup from repository root (NOT from mattermost subdirectory)
+cd /path/to/demo-kit
+go run main.go setup
+
+# Force reinstall local plugins
+go run main.go setup --reinstall-plugins local
+
+# Force reinstall all plugins
+go run main.go setup --reinstall-plugins all
 ```
 
 ### Plugin Management
@@ -175,14 +191,16 @@ Plugins are configured as JSON objects in the `bulk_import.jsonl` file:
 
 ```bash
 # Standard setup - skips already installed plugins
-./mmsetup setup
+go run main.go setup
 
 # Force reinstall local plugins only
-./mmsetup setup --reinstall-plugins local
+go run main.go setup --reinstall-plugins local
 
 # Force reinstall all plugins (local + GitHub)
-./mmsetup setup --reinstall-plugins all
+go run main.go setup --reinstall-plugins all
 ```
+
+**Note**: These commands should be run from the repository root directory, not from the mattermost subdirectory.
 
 #### Adding New Plugins
 

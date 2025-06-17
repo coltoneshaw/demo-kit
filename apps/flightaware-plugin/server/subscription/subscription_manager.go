@@ -18,7 +18,6 @@ type FlightSubscription struct {
 	UserID          string        `json:"user_id"`
 	UpdateFrequency int64         `json:"update_frequency"`
 	LastUpdated     time.Time     `json:"last_updated"`
-	StopChan        chan struct{} `json:"-"`
 }
 
 type SubscriptionInterface interface {
@@ -35,6 +34,7 @@ type SubscriptionManager struct {
 	flightService  flight.FlightInterface
 	messageService MessageServiceInterface
 	subscriptions  map[string]*FlightSubscription
+	jobs           map[string]chan struct{} // Track running subscription jobs
 	mutex          sync.RWMutex
 }
 
@@ -49,6 +49,7 @@ func NewSubscriptionManager(client *pluginapi.Client, flightService flight.Fligh
 		flightService:  flightService,
 		messageService: messageService,
 		subscriptions:  make(map[string]*FlightSubscription),
+		jobs:           make(map[string]chan struct{}),
 	}
 	if err := sm.loadSubscriptions(); err != nil {
 		return nil, fmt.Errorf("failed to initialize subscription manager: %w", err)
@@ -60,7 +61,6 @@ func (sm *SubscriptionManager) AddSubscription(sub *FlightSubscription) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	sub.StopChan = make(chan struct{})
 	sm.subscriptions[sub.ID] = sub
 
 	go sm.startSubscription(sub)
@@ -73,14 +73,28 @@ func (sm *SubscriptionManager) RemoveSubscription(id string) bool {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	sub, exists := sm.subscriptions[id]
+	_, exists := sm.subscriptions[id]
 	if exists {
-		close(sub.StopChan)
+		// Stop the subscription job if running
+		sm.stopSubscriptionJob(id)
 		delete(sm.subscriptions, id)
 		sm.saveSubscriptions()
 		return true
 	}
 	return false
+}
+
+// stopSubscriptionJob stops a subscription job if it's running
+func (sm *SubscriptionManager) stopSubscriptionJob(id string) {
+	// Check if job exists
+	stopChan, exists := sm.jobs[id]
+	if !exists {
+		return // Job not running
+	}
+
+	// Signal job to stop
+	close(stopChan)
+	delete(sm.jobs, id)
 }
 
 func (sm *SubscriptionManager) GetSubscription(id string) (*FlightSubscription, bool) {
@@ -118,12 +132,18 @@ func (sm *SubscriptionManager) StopAll() {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	for _, sub := range sm.subscriptions {
-		close(sub.StopChan)
+	for id := range sm.jobs {
+		sm.stopSubscriptionJob(id)
 	}
 }
 
 func (sm *SubscriptionManager) startSubscription(sub *FlightSubscription) {
+	// Create and store the stop channel for this job
+	sm.mutex.Lock()
+	stopChan := make(chan struct{})
+	sm.jobs[sub.ID] = stopChan
+	sm.mutex.Unlock()
+
 	ticker := time.NewTicker(time.Duration(sub.UpdateFrequency) * time.Second)
 	defer ticker.Stop()
 
@@ -168,7 +188,7 @@ func (sm *SubscriptionManager) startSubscription(sub *FlightSubscription) {
 		select {
 		case <-ticker.C:
 			fetchAndSendFlights()
-		case <-sub.StopChan:
+		case <-stopChan:
 			return
 		}
 	}
@@ -193,11 +213,11 @@ func (sm *SubscriptionManager) loadSubscriptions() error {
 	}
 
 	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
+	sm.subscriptions = subs
+	sm.mutex.Unlock()
 
-	for id, sub := range subs {
-		sub.StopChan = make(chan struct{})
-		sm.subscriptions[id] = sub
+	// Start subscriptions for all loaded subscriptions
+	for _, sub := range subs {
 		go sm.startSubscription(sub)
 	}
 	
@@ -238,12 +258,7 @@ func (sm *SubscriptionManager) cleanupInvalidSubscription(sub *FlightSubscriptio
 		"airport", sub.Airport,
 		"reason", reason)
 	
-	// Stop the subscription if it's running
-	if sub.StopChan != nil {
-		close(sub.StopChan)
-	}
-	
-	// Remove from subscriptions map
+	// Remove from subscriptions map (this will also stop the job)
 	sm.RemoveSubscription(sub.ID)
 	
 	// Try to notify the user about the cleanup if possible
