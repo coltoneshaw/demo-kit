@@ -628,6 +628,20 @@ type BulkUser struct {
 	Position  string `json:"position"`
 }
 
+// CustomProfileField represents a custom profile field definition
+type CustomProfileField struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	DisplayName string   `json:"display_name"`
+	Type        string   `json:"type"`
+	Options     []string `json:"options,omitempty"`
+}
+
+// UserCustomProfileFields represents a user's custom profile field values
+type UserCustomProfileFields struct {
+	Fields map[string]string `json:"fields"`
+}
+
 // ResetImportLine represents a single line in the bulk import JSONL file for reset operations
 type ResetImportLine struct {
 	Type string `json:"type"`
@@ -972,3 +986,81 @@ func (c *Client) EchoLogins() {
 	Log.Info("")
 	Log.Info("===========================================")
 }
+
+// ListCustomProfileFields retrieves all custom profile fields from the server
+func (c *Client) ListCustomProfileFields() ([]CustomProfileField, error) {
+	url := fmt.Sprintf("%s/api/v4/custom_profile_attributes/fields", c.ServerURL)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.API.AuthToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get custom fields: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get custom fields, status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var fields []CustomProfileField
+	if err := json.NewDecoder(resp.Body).Decode(&fields); err != nil {
+		return nil, fmt.Errorf("failed to decode custom fields: %w", err)
+	}
+
+	return fields, nil
+}
+
+// CreateCustomProfileField creates a new custom profile field
+func (c *Client) CreateCustomProfileField(name, displayName, fieldType string, options []string) (*CustomProfileField, error) {
+	url := fmt.Sprintf("%s/api/v4/custom_profile_attributes/fields", c.ServerURL)
+
+	payload := map[string]any{
+		"name":         name,
+		"display_name": displayName,
+		"type":         fieldType,
+	}
+
+	if len(options) > 0 {
+		payload["options"] = options
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.API.AuthToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create custom field: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to create custom field, status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var field CustomProfileField
+	if err := json.NewDecoder(resp.Body).Decode(&field); err != nil {
+		return nil, fmt.Errorf("failed to decode created field: %w", err)
+	}
+
+	return &field, nil
+}
+

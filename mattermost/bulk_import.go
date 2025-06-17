@@ -54,6 +54,22 @@ type PluginImport struct {
 	} `json:"plugin"`
 }
 
+
+// UserAttributeImport represents a single user attribute definition import entry
+type UserAttributeImport struct {
+	Type      string `json:"type"`
+	Attribute UserAttributeField `json:"attribute"`
+}
+
+// UserAttributeField represents a custom profile field definition
+type UserAttributeField struct {
+	Name         string `json:"name"`
+	DisplayName  string `json:"display_name"`
+	Type         string `json:"type"`
+	HideWhenEmpty bool  `json:"hide_when_empty,omitempty"`
+	Required     bool   `json:"required,omitempty"`
+}
+
 func closeWithLog(c io.Closer, label string) {
 	if err := c.Close(); err != nil {
 		Log.WithFields(logrus.Fields{"label": label, "error": err.Error()}).Warn("⚠️ Failed to close resource")
@@ -264,6 +280,11 @@ func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins b
 		return fmt.Errorf("failed to import users: %w", err)
 	}
 
+	if err := c.processUserAttributes(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to process user attributes: %w", err)
+	}
+
+
 	if err := c.processCommands(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to process commands: %w", err)
 	}
@@ -306,6 +327,8 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 		"channel-category": true,
 		"command":          true,
 		"plugin":           true,
+		"user-attribute":   true,
+		"user-profile":     true,
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -742,3 +765,105 @@ func (c *Client) processPlugins(bulkImportPath string, forcePlugins, forceGitHub
 
 	return scanner.Err()
 }
+
+// processUserAttributes processes user attribute definitions from JSONL
+func (c *Client) processUserAttributes(bulkImportPath string) error {
+	Log.WithFields(logrus.Fields{"file_path": bulkImportPath}).Info("📋 Processing user attributes")
+
+	file, err := os.Open(bulkImportPath)
+	if err != nil {
+		return err
+	}
+	defer closeWithLog(file, "bulk import file")
+
+	var attributeFields []UserAttributeField
+	createdCount := 0
+	errorCount := 0
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var attributeImport UserAttributeImport
+		if err := json.Unmarshal([]byte(line), &attributeImport); err != nil {
+			continue
+		}
+
+		if attributeImport.Type == "user-attribute" {
+			attributeFields = append(attributeFields, attributeImport.Attribute)
+		}
+	}
+
+	if len(attributeFields) == 0 {
+		Log.Info("📋 No user attributes found, skipping")
+		return nil
+	}
+
+	Log.WithFields(logrus.Fields{
+		"field_count": len(attributeFields),
+	}).Info("📋 Found user attributes")
+
+	// Ensure all custom fields exist
+	for _, field := range attributeFields {
+		if err := c.ensureCustomFieldExists(field.Name, field.DisplayName, field.Type, nil); err != nil {
+			Log.WithFields(logrus.Fields{
+				"field_name": field.Name,
+				"error":      err.Error(),
+			}).Warn("⚠️ Failed to ensure custom field exists")
+			errorCount++
+		} else {
+			createdCount++
+		}
+	}
+
+	Log.WithFields(logrus.Fields{
+		"created_count": createdCount,
+		"error_count":   errorCount,
+	}).Info("✅ User attributes processing complete")
+
+	return scanner.Err()
+}
+
+
+// ensureCustomFieldExists creates a custom field if it doesn't exist
+func (c *Client) ensureCustomFieldExists(name, displayName, fieldType string, options []string) error {
+	// Get existing fields
+	existingFields, err := c.ListCustomProfileFields()
+	if err != nil {
+		return fmt.Errorf("failed to list existing custom fields: %w", err)
+	}
+
+	// Check if field already exists
+	for _, field := range existingFields {
+		if field.Name == name {
+			Log.WithFields(logrus.Fields{
+				"field_name": name,
+			}).Debug("🔍 Custom field already exists")
+			return nil
+		}
+	}
+
+	// Create the field
+	Log.WithFields(logrus.Fields{
+		"field_name":    name,
+		"display_name":  displayName,
+		"field_type":    fieldType,
+		"options_count": len(options),
+	}).Info("📝 Creating custom profile field")
+
+	_, err = c.CreateCustomProfileField(name, displayName, fieldType, options)
+	if err != nil {
+		return fmt.Errorf("failed to create custom field '%s': %w", name, err)
+	}
+
+	Log.WithFields(logrus.Fields{
+		"field_name": name,
+	}).Info("✅ Successfully created custom profile field")
+
+	return nil
+}
+
+

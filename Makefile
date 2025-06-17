@@ -122,8 +122,8 @@ build: test
 	mkdir -p bin
 	$(BUILD_COMMAND)
 
-run:
-	go run ./main.go
+# run:
+# 	go run ./main.go
 
 package: test
 	mkdir -p build bin 

@@ -60,7 +60,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    image: mattermost/mattermost-enterprise-edition:release-10.7
+    image: mattermost/mattermost-enterprise-edition:release-10.8
     env_file:
       - ./files/env_vars.env
     restart: unless-stopped

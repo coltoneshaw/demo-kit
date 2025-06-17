@@ -1,4 +1,11 @@
 {"type": "version", "version": 1}
+{"type": "user-attribute", "attribute": {"name": "rank", "display_name": "Rank", "type": "text", "hide_when_empty": false, "required": true}}
+{"type": "user-attribute", "attribute": {"name": "branch", "display_name": "Branch", "type": "text", "hide_when_empty": false, "required": true}}
+{"type": "user-attribute", "attribute": {"name": "unit", "display_name": "Unit", "type": "text", "hide_when_empty": false, "required": false}}
+{"type": "user-attribute", "attribute": {"name": "clearance", "display_name": "Security Clearance", "type": "text", "hide_when_empty": true, "required": false}}
+{"type": "user-attribute", "attribute": {"name": "location", "display_name": "Location", "type": "text", "hide_when_empty": false, "required": false}}
+{"type": "user-attribute", "attribute": {"name": "bio", "display_name": "Bio", "type": "text", "hide_when_empty": true, "required": false}}
+{"type": "user-attribute", "attribute": {"name": "commanding_officer", "display_name": "Commanding Officer", "type": "text", "hide_when_empty": false, "required": false}}
 {"type": "plugin", "plugin": {"source": "github", "github_repo": "mattermost/mattermost-plugin-playbooks", "plugin_id": "playbooks", "name": "Playbooks", "force_install": false}}
 {"type": "plugin", "plugin": {"source": "github", "github_repo": "mattermost/mattermost-plugin-ai", "plugin_id": "mattermost-ai", "name": "Mattermost Agents", "force_install": false}}
 {"type": "plugin", "plugin": {"source": "local", "path": "./apps/weather-plugin", "plugin_id": "com.coltoneshaw.weather", "name": "Weather Plugin", "force_install": false}}
