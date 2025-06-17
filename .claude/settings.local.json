@@ -21,7 +21,8 @@
       "Bash(rg:*)",
       "Bash(go build:*)",
       "WebFetch(domain:docs.mattermost.com)",
-      "Bash(go doc:*)"
+      "Bash(go doc:*)",
+      "Bash(go run:*)"
     ],
     "deny": []
   }

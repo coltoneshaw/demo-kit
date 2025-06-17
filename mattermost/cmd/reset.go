@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"bufio"
+	"fmt"
 	"log"
+	"os"
+	"strings"
 
 	mmsetup "github.com/coltoneshaw/demokit/mattermost"
 	"github.com/spf13/cobra"
@@ -26,6 +30,42 @@ The reset operation requires the Mattermost server to have the following setting
 - ServiceSettings.EnableAPITeamDeletion = true`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client := mmsetup.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
+
+		// Load the bulk import data to show what will be deleted
+		data, err := client.LoadBulkImportData()
+		if err != nil {
+			log.Fatalf("Failed to load bulk import data: %v", err)
+		}
+
+		// Show confirmation prompt with summary counts
+		fmt.Println("🚨 DESTRUCTIVE OPERATION WARNING 🚨")
+		fmt.Println()
+		fmt.Printf("This will PERMANENTLY DELETE the following from your Mattermost server:\n")
+		fmt.Printf("  • %d teams\n", len(data.Teams))
+		fmt.Printf("  • %d users\n", len(data.Users))
+		fmt.Printf("  • All associated channels and data")
+		fmt.Println()
+		fmt.Println("⚠️  This operation is IRREVERSIBLE. All data will be permanently lost.")
+		fmt.Println("⚠️  Make sure you have backups if you need to recover this data.")
+		fmt.Println("⚠️  Check bulk_import.jsonl for the complete list of items to be deleted.")
+		fmt.Println()
+		
+		// Prompt for confirmation
+		fmt.Print("Type 'DELETE' to confirm this destructive operation: ")
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalf("Failed to read input: %v", err)
+		}
+		
+		input = strings.TrimSpace(input)
+		if input != "DELETE" {
+			fmt.Println("Operation cancelled. No data was deleted.")
+			return
+		}
+
+		fmt.Println()
+		fmt.Println("Proceeding with reset operation...")
 
 		if err := client.Reset(); err != nil {
 			log.Fatalf("Reset failed: %v", err)

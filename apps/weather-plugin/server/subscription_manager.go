@@ -91,6 +91,13 @@ func (sm *SubscriptionManager) GetAllSubscriptions() []*Subscription {
 
 
 func (sm *SubscriptionManager) StartSubscription(sub *Subscription) {
+	// Check if channel still exists before starting subscription
+	if !sm.isChannelValid(sub.ChannelID) {
+		sm.client.Log.Info("Channel no longer exists, removing subscription", "channel_id", sub.ChannelID, "subscription_id", sub.ID)
+		sm.cleanupInvalidSubscription(sub, "channel no longer exists")
+		return
+	}
+
 	// Get initial weather data
 	weatherData, err := sm.weatherService.GetWeatherData(sub.Location)
 	if err != nil {
@@ -145,6 +152,13 @@ func (sm *SubscriptionManager) StartSubscription(sub *Subscription) {
 				sm.client.Log.Info("Successfully recovered subscription after failures", "subscription_id", sub.ID, "failures", consecutiveFailures)
 				consecutiveFailures = 0
 				ticker.Reset(time.Duration(sub.UpdateFrequency) * time.Millisecond)
+			}
+
+			// Check if channel still exists before posting update
+			if !sm.isChannelValid(sub.ChannelID) {
+				sm.client.Log.Info("Channel no longer exists during update, removing subscription", "channel_id", sub.ChannelID, "subscription_id", sub.ID)
+				sm.cleanupInvalidSubscription(sub, "channel no longer exists")
+				return
 			}
 
 			post := sm.formatter.FormatAsAttachment(weatherData, sub.ChannelID, sm.messageService.GetBotUserID())
@@ -214,4 +228,55 @@ func (sm *SubscriptionManager) loadSubscriptions() {
 	sm.mutex.Unlock()
 	
 	sm.client.Log.Info("Loaded subscriptions", "count", len(subscriptions))
+}
+
+// isChannelValid checks if a channel still exists
+func (sm *SubscriptionManager) isChannelValid(channelID string) bool {
+	_, err := sm.client.Channel.Get(channelID)
+	return err == nil
+}
+
+// cleanupInvalidSubscription removes a subscription and logs the reason
+func (sm *SubscriptionManager) cleanupInvalidSubscription(sub *Subscription, reason string) {
+	sm.client.Log.Info("Cleaning up invalid subscription", 
+		"subscription_id", sub.ID, 
+		"channel_id", sub.ChannelID, 
+		"location", sub.Location,
+		"reason", reason)
+	
+	// Stop the subscription if it's running
+	if sub.StopChan != nil {
+		close(sub.StopChan)
+	}
+	
+	// Remove from subscriptions map
+	sm.RemoveSubscription(sub.ID)
+	
+	// Try to notify the user about the cleanup if possible
+	sm.tryNotifyUserOfCleanup(sub, reason)
+}
+
+// tryNotifyUserOfCleanup attempts to send a DM to the user about subscription cleanup
+func (sm *SubscriptionManager) tryNotifyUserOfCleanup(sub *Subscription, reason string) {
+	// Create a DM channel with the user
+	dmChannel, err := sm.client.Channel.GetDirect(sm.messageService.GetBotUserID(), sub.UserID)
+	if err != nil {
+		sm.client.Log.Debug("Could not create DM channel for cleanup notification", "user_id", sub.UserID, "error", err)
+		return
+	}
+	
+	message := fmt.Sprintf("🧹 **Weather Subscription Cleanup**\n\n"+
+		"Your weather subscription for **%s** (ID: `%s`) has been automatically removed because %s.\n\n"+
+		"If you need weather updates, please set up a new subscription in an active channel.",
+		sub.Location, sub.ID, reason)
+	
+	post := &model.Post{
+		ChannelId: dmChannel.Id,
+		Message:   message,
+		UserId:    sm.messageService.GetBotUserID(),
+	}
+	
+	if err := sm.client.Post.CreatePost(post); err != nil {
+		sm.client.Log.Debug("Could not send cleanup notification to user", "user_id", sub.UserID, "error", err)
+	}
 }

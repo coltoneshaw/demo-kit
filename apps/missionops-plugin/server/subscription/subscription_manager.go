@@ -407,6 +407,13 @@ func (s *SubscriptionManager) runSubscriptionJob(sub *MissionSubscription, stopC
 		message += fmt.Sprintf("\n\n*This is an automated update for mission statuses: %s. Updates every %d seconds.*",
 			statusTypesText, sub.UpdateFrequency)
 
+		// Check if channel still exists before sending update
+		if !s.isChannelValid(sub.ChannelID) {
+			s.client.Log.Info("Channel no longer exists, removing mission subscription", "channel_id", sub.ChannelID, "subscription_id", sub.ID)
+			s.cleanupInvalidSubscription(sub, "channel no longer exists")
+			return
+		}
+
 		// Send to Mattermost with the subscription's channel ID
 		_, err = s.bot.PostMessageFromBot(sub.ChannelID, message)
 		if err != nil {
@@ -469,9 +476,71 @@ func (c *SubscriptionManager) NotifySubscribersOfStatusChange(mission *mission.M
 		}
 
 		c.client.Log.Debug("Sending status change notification", "subscriptionId", sub.ID, "channelId", sub.ChannelID)
+		
+		// Check if channel still exists before sending notification
+		if !c.isChannelValid(sub.ChannelID) {
+			c.client.Log.Info("Channel no longer exists for status change notification, removing subscription", "channel_id", sub.ChannelID, "subscription_id", sub.ID)
+			c.cleanupInvalidSubscription(sub, "channel no longer exists")
+			continue
+		}
+		
 		_, err := c.bot.PostMessageFromBot(sub.ChannelID, statusChangeMsg)
 		if err != nil {
 			c.client.Log.Error("Error sending status change notification", "subscriptionId", sub.ID, "error", err.Error())
 		}
+	}
+}
+
+// isChannelValid checks if a channel still exists
+func (s *SubscriptionManager) isChannelValid(channelID string) bool {
+	_, err := s.client.Channel.Get(channelID)
+	return err == nil
+}
+
+// cleanupInvalidSubscription removes a subscription and logs the reason
+func (s *SubscriptionManager) cleanupInvalidSubscription(sub *MissionSubscription, reason string) {
+	s.client.Log.Info("Cleaning up invalid mission subscription", 
+		"subscription_id", sub.ID, 
+		"channel_id", sub.ChannelID, 
+		"status_types", sub.StatusTypes,
+		"reason", reason)
+	
+	// Remove from subscriptions
+	if err := s.RemoveSubscription(sub.ID); err != nil {
+		s.client.Log.Error("Failed to remove invalid subscription", "subscription_id", sub.ID, "error", err)
+	}
+	
+	// Try to notify the user about the cleanup if possible
+	s.tryNotifyUserOfCleanup(sub, reason)
+}
+
+// tryNotifyUserOfCleanup attempts to send a DM to the user about subscription cleanup
+func (s *SubscriptionManager) tryNotifyUserOfCleanup(sub *MissionSubscription, reason string) {
+	// Create a DM channel with the user
+	dmChannel, err := s.client.Channel.GetDirect(s.bot.GetBotUserInfo().UserId, sub.UserID)
+	if err != nil {
+		s.client.Log.Debug("Could not create DM channel for cleanup notification", "user_id", sub.UserID, "error", err)
+		return
+	}
+	
+	statusTypes := "all status types"
+	if len(sub.StatusTypes) > 0 {
+		statusTypes = ""
+		for i, status := range sub.StatusTypes {
+			if i > 0 {
+				statusTypes += ", "
+			}
+			statusTypes += status
+		}
+	}
+	
+	message := fmt.Sprintf("🧹 **Mission Subscription Cleanup**\n\n"+
+		"Your mission subscription for **%s** (ID: `%s`) has been automatically removed because %s.\n\n"+
+		"If you need mission updates, please set up a new subscription in an active channel.",
+		statusTypes, sub.ID, reason)
+	
+	_, err = s.bot.PostMessageFromBot(dmChannel.Id, message)
+	if err != nil {
+		s.client.Log.Debug("Could not send cleanup notification to user", "user_id", sub.UserID, "error", err)
 	}
 }

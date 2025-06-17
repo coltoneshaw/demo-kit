@@ -57,7 +57,7 @@ func CreateZipFile(jsonlPath, zipPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create zip file: %w", err)
 	}
-	defer closeWithLog(zipFile, "zip file")
+	// Note: zipFile will be closed by zipWriter.Close(), no need for separate close
 
 	zipWriter := zip.NewWriter(zipFile)
 	defer closeWithLog(zipWriter, "zip writer")
@@ -77,6 +77,8 @@ func CreateZipFile(jsonlPath, zipPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file header: %w", err)
 	}
+	// Use consistent filename in zip regardless of source filename
+	header.Name = "import.jsonl"
 	header.Method = zip.Deflate
 
 	writer, err := zipWriter.CreateHeader(header)
@@ -92,19 +94,28 @@ func CreateZipFile(jsonlPath, zipPath string) error {
 func (c *Client) ImportBulkData(filePath string) error {
 	zipPath := filePath + ".zip"
 
+	// Clean up temp files when done
+	defer func() {
+		removeWithLog(zipPath)
+		// Clean up temp file if it's a temp file (contains "/tmp/" or similar pattern)
+		if strings.Contains(filePath, "import_") && strings.HasSuffix(filePath, ".jsonl") {
+			removeWithLog(filePath)
+		}
+	}()
+
 	// Create ZIP file
 	if err := CreateZipFile(filePath, zipPath); err != nil {
 		return fmt.Errorf("failed to create ZIP file: %w", err)
 	}
-	defer removeWithLog(zipPath)
 
-	// Upload file using the correct upload mechanism
+	// Upload file using upload session
 	importFileName, err := c.uploadImportFile(zipPath)
 	if err != nil {
 		return fmt.Errorf("failed to upload import file: %w", err)
 	}
 
 	// Start import job
+	fmt.Printf("🚀 Creating import job for file: %s\n", importFileName)
 	job, resp, err := c.API.CreateJob(context.Background(), &model.Job{
 		Type: model.JobTypeImportProcess,
 		Data: map[string]string{
@@ -114,6 +125,7 @@ func (c *Client) ImportBulkData(filePath string) error {
 	if err != nil {
 		return handleAPIError("failed to create import job", err, resp)
 	}
+	fmt.Printf("✅ Import job created with ID: %s\n", job.Id)
 
 	// Wait for completion
 	return c.waitForJobCompletion(job)
@@ -125,7 +137,14 @@ func (c *Client) uploadImportFile(zipPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open zip file: %w", err)
 	}
-	defer closeWithLog(file, "zip file")
+	defer func() {
+		if err := file.Close(); err != nil {
+			// Silently ignore "file already closed" errors
+			if !strings.Contains(err.Error(), "file already closed") {
+				fmt.Printf("warning: failed to close upload zip file: %v", err)
+			}
+		}
+	}()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -150,12 +169,15 @@ func (c *Client) uploadImportFile(zipPath string) (string, error) {
 	}
 
 	// Upload the file data
-	importFileInfo, resp, err := c.API.UploadData(context.Background(), uploadSession.Id, file)
+	_, resp, err = c.API.UploadData(context.Background(), uploadSession.Id, file)
 	if err != nil {
 		return "", handleAPIError("failed to upload file data: %w", err, resp)
 	}
 
-	return importFileInfo.Name, nil
+	// The actual filename that Mattermost stores is sessionId_originalName
+	actualFileName := uploadSession.Id + "_" + fileInfo.Name()
+	fmt.Printf("📤 Uploaded import file: %s -> %s (Session: %s)\n", fileInfo.Name(), actualFileName, uploadSession.Id)
+	return actualFileName, nil
 }
 
 // waitForJobCompletion waits for a job to complete
@@ -217,12 +239,12 @@ func (c *Client) SetupWithSplitImport() error {
 		return fmt.Errorf("failed to import infrastructure: %w", err)
 	}
 
-	if err := c.importUsers(bulkImportPath); err != nil {
-		return fmt.Errorf("failed to import users: %w", err)
-	}
-
 	if err := c.processChannelCategories(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to process channel categories: %w", err)
+	}
+
+	if err := c.importUsers(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to import users: %w", err)
 	}
 
 	if err := c.processCommands(bulkImportPath); err != nil {
@@ -230,6 +252,53 @@ func (c *Client) SetupWithSplitImport() error {
 	}
 
 	return nil
+}
+
+// SetupWithSplitImportForce performs setup using two-phase bulk import with force option
+func (c *Client) SetupWithSplitImportForce(force bool) error {
+	if !force {
+		return c.SetupWithSplitImport()
+	}
+
+	fmt.Println("Force mode: rebuilding all data with two-phase bulk import...")
+	bulkImportPath, err := findBulkImportPath()
+	if err != nil {
+		return err
+	}
+
+	// Force rebuild - process everything regardless of existing state
+	if err := c.importInfrastructure(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to import infrastructure: %w", err)
+	}
+
+	if err := c.processChannelCategories(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to process channel categories: %w", err)
+	}
+
+	if err := c.importUsers(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to import users: %w", err)
+	}
+
+	if err := c.processCommands(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to process commands: %w", err)
+	}
+
+	return nil
+}
+
+// SetupWithBulkImportForce performs setup using bulk import with force option  
+func (c *Client) SetupWithBulkImportForce(force bool) error {
+	if !force {
+		return c.SetupWithBulkImport()
+	}
+
+	fmt.Println("Force mode: rebuilding all data with single-phase bulk import...")
+	bulkImportPath, err := findBulkImportPath()
+	if err != nil {
+		return err
+	}
+
+	return c.ImportBulkData(bulkImportPath)
 }
 
 // importInfrastructure imports teams and channels
@@ -253,11 +322,17 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer removeWithLog(tempFile.Name())
+	// Note: temp file cleanup is handled by ImportBulkData after job completion
 
 	// Write version line
 	if _, err := tempFile.WriteString("{\"type\": \"version\", \"version\": 1}\n"); err != nil {
 		return fmt.Errorf("failed to write version line: %w", err)
+	}
+
+	// Define custom types that should be skipped during bulk import
+	customTypes := map[string]bool{
+		"channel-category": true,
+		"command":          true,
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -268,8 +343,26 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 			continue
 		}
 
+		// First, extract just the type field to check if it's a custom type
+		var typeCheck struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &typeCheck); err != nil {
+			// If we can't even parse the type, skip with warning
+			fmt.Printf("Warning: Failed to parse type from line, skipping: %s\n", line)
+			continue
+		}
+
+		// Skip custom types silently (no warning)
+		if customTypes[typeCheck.Type] {
+			continue
+		}
+
+		// For standard types, try to unmarshal as BulkImportLine
 		var importLine BulkImportLine
 		if err := json.Unmarshal([]byte(line), &importLine); err != nil {
+			// Only warn for non-custom types that fail to parse
+			fmt.Printf("Warning: Failed to parse standard import line, skipping: %s\n", line)
 			continue
 		}
 
@@ -297,11 +390,17 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 
 // processChannelCategories processes channel categories
 func (c *Client) processChannelCategories(bulkImportPath string) error {
+	fmt.Println("Processing channel categories...")
+	
 	file, err := os.Open(bulkImportPath)
 	if err != nil {
 		return err
 	}
 	defer closeWithLog(file, "bulk import file")
+	
+	categorizedCount := 0
+	errorCount := 0
+	
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -317,10 +416,23 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 		if categoryImport.Type == "channel-category" {
 			for _, channelName := range categoryImport.Channels {
 				if err := c.categorizeChannel(categoryImport.Team, channelName, categoryImport.Category); err != nil {
+					if err.Error() == "ALREADY_CATEGORIZED" {
+						// Don't count as error or update - just silently skip
+						continue
+					}
 					fmt.Printf("Warning: Failed to categorize channel '%s': %v\n", channelName, err)
+					errorCount++
+				} else {
+					categorizedCount++
 				}
 			}
 		}
+	}
+	
+	if categorizedCount > 0 || errorCount > 0 {
+		fmt.Printf("✅ Channel categorization complete (%d updated, %d errors)\n", categorizedCount, errorCount)
+	} else {
+		fmt.Println("✅ All channels already properly categorized")
 	}
 
 	return scanner.Err()

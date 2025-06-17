@@ -193,7 +193,32 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 		return fmt.Errorf("channel ID and category name are required")
 	}
 
-	fmt.Printf("Categorizing channel %s in category '%s' using Playbooks API...\n", channelID, categoryName)
+	// Check if channel already has a categorization action to avoid duplicates
+	checkURL := fmt.Sprintf("%s/plugins/playbooks/api/v0/actions/channels/%s", c.ServerURL, channelID)
+	checkReq, err := http.NewRequest("GET", checkURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create check request: %w", err)
+	}
+	checkReq.Header.Set("Authorization", "Bearer "+c.API.AuthToken)
+	
+	client := &http.Client{}
+	checkResp, err := client.Do(checkReq)
+	if err != nil {
+		return fmt.Errorf("failed to check existing actions: %w", err)
+	}
+	defer func() { _ = checkResp.Body.Close() }()
+	
+	if checkResp.StatusCode == http.StatusOK {
+		// Channel already has actions, check existing categorization
+		body, _ := io.ReadAll(checkResp.Body)
+		if strings.Contains(string(body), "categorize_channel") {
+			// Return a special error to indicate "already categorized" (not a real error)
+			return fmt.Errorf("ALREADY_CATEGORIZED")
+		}
+	}
+
+	// Log only when we're actually going to create a new categorization action
+	fmt.Printf("📋 Categorizing channel %s in category '%s'\n", channelID, categoryName)
 
 	// Construct the URL for the categorize channel API
 	url := fmt.Sprintf("%s/plugins/playbooks/api/v0/actions/channels/%s",
@@ -238,7 +263,6 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 	req.Header.Set("Authorization", "Bearer "+c.API.AuthToken)
 
 	// Send the request
-	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send categorize request: %w", err)
@@ -258,6 +282,7 @@ func (c *Client) categorizeChannelAPI(channelID string, categoryName string) err
 	fmt.Printf("✅ Successfully categorized channel in '%s' using Playbooks API\n", categoryName)
 	return nil
 }
+
 
 // SetupChannelCommands executes specified slash commands in channels sequentially
 // If any command fails, the entire setup process will abort
@@ -522,6 +547,16 @@ func (c *Client) UploadPlugin(bundlePath string) error {
 
 // Setup performs the main setup based on configuration using individual API calls
 func (c *Client) Setup() error {
+	return c.SetupWithForce(false, false, false)
+}
+
+// SetupWithForce performs the main setup with force options
+func (c *Client) SetupWithForce(forcePlugins, forceGitHubPlugins, forceAll bool) error {
+	return c.SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, false)
+}
+
+// SetupWithForceAndUpdates performs the main setup with force options and update checking
+func (c *Client) SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates bool) error {
 	// Safety check - make sure the client and API are properly initialized
 	if c == nil || c.API == nil {
 		return fmt.Errorf("client not properly initialized")
@@ -541,13 +576,17 @@ func (c *Client) Setup() error {
 	}
 
 	// Download and install latest plugins (no config dependency)
-	if err := c.PluginManager.SetupLatestPlugins(nil); err != nil {
+	if err := c.PluginManager.SetupLatestPluginsWithUpdate(nil, forcePlugins, forceGitHubPlugins, checkUpdates); err != nil {
 		return fmt.Errorf("failed to setup plugins: %w", err)
 	}
 
-	// Use two-phase bulk import for users, teams, and channels
-	if err := c.SetupWithSplitImport(); err != nil {
-		return err
+	// Use two-phase bulk import for users, teams, and channels (skip if only reinstalling plugins)
+	if forcePlugins && !forceAll {
+		fmt.Println("Plugin reinstall mode: skipping bulk import")
+	} else {
+		if err := c.SetupWithSplitImportForce(forceAll); err != nil {
+			return err
+		}
 	}
 
 	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
@@ -556,6 +595,16 @@ func (c *Client) Setup() error {
 
 // SetupBulk performs the main setup using bulk import instead of individual API calls
 func (c *Client) SetupBulk() error {
+	return c.SetupBulkWithForce(false, false, false)
+}
+
+// SetupBulkWithForce performs the main setup using bulk import with force options
+func (c *Client) SetupBulkWithForce(forcePlugins, forceGitHubPlugins, forceAll bool) error {
+	return c.SetupBulkWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, false)
+}
+
+// SetupBulkWithForceAndUpdates performs the main setup using bulk import with force options and update checking
+func (c *Client) SetupBulkWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates bool) error {
 	// Safety check - make sure the client and API are properly initialized
 	if c == nil || c.API == nil {
 		return fmt.Errorf("client not properly initialized")
@@ -575,13 +624,17 @@ func (c *Client) SetupBulk() error {
 	}
 
 	// Download and install latest plugins (no config dependency)
-	if err := c.PluginManager.SetupLatestPlugins(nil); err != nil {
+	if err := c.PluginManager.SetupLatestPluginsWithUpdate(nil, forcePlugins, forceGitHubPlugins, checkUpdates); err != nil {
 		return fmt.Errorf("failed to setup plugins: %w", err)
 	}
 
-	// Use two-phase bulk import for users, teams, and channels
-	if err := c.SetupWithSplitImport(); err != nil {
-		return err
+	// Use bulk import for users, teams, and channels (skip if only reinstalling plugins)
+	if forcePlugins && !forceAll {
+		fmt.Println("Plugin reinstall mode: skipping bulk import")
+	} else {
+		if err := c.SetupWithBulkImportForce(forceAll); err != nil {
+			return err
+		}
 	}
 
 	fmt.Println("Alright, everything seems to be setup and running. Enjoy.")
@@ -664,6 +717,12 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 	var teams []BulkTeam
 	var users []BulkUser
 
+	// Define custom types that should be skipped during bulk import parsing
+	customTypes := map[string]bool{
+		"channel-category": true,
+		"command":          true,
+	}
+
 	// Read the JSONL file line by line
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -672,9 +731,26 @@ func (c *Client) LoadBulkImportData() (*BulkImportData, error) {
 			continue
 		}
 
+		// First, extract just the type field to check if it's a custom type
+		var typeCheck struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &typeCheck); err != nil {
+			// If we can't even parse the type, skip with warning
+			fmt.Printf("Warning: Failed to parse type from line, skipping: %s\n", line)
+			continue
+		}
+
+		// Skip custom types silently (no warning)
+		if customTypes[typeCheck.Type] {
+			continue
+		}
+
+		// For standard types, try to unmarshal as ResetImportLine
 		var importLine ResetImportLine
 		if err := json.Unmarshal([]byte(line), &importLine); err != nil {
-			fmt.Printf("Warning: Failed to parse line: %s\n", line)
+			// Only warn for non-custom types that fail to parse
+			fmt.Printf("Warning: Failed to parse standard import line, skipping: %s\n", line)
 			continue
 		}
 

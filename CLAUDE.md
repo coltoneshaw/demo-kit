@@ -19,10 +19,16 @@ This is a demo kit for Mattermost with integrated weather and flight tracking ap
 
 ### Mattermost Setup Tool
 - `cd mattermost && go build -o mmsetup ./cmd` - Build the setup tool
-- `./mmsetup -setup` - Run setup with default config
-- `./mmsetup -setup -config /path/to/config.json` - Run setup with custom config
-- `./mmsetup -help-config` - Show configuration file help
-- `./mmsetup -echo-logins` - Display login information
+- `./mmsetup setup` - Run setup with default config and intelligent plugin management
+- `./mmsetup setup --config /path/to/config.json` - Run setup with custom config
+- `./mmsetup setup --check-updates` - Check for and install newer plugin versions
+- `./mmsetup setup --reinstall-plugins local` - Force rebuild local plugins only
+- `./mmsetup setup --reinstall-plugins all` - Force reinstall all plugins
+- `./mmsetup setup --bulk-import` - Use single-phase bulk import method
+- `./mmsetup help-config` - Show configuration file help
+- `./mmsetup echo-logins` - Display login information
+- `./mmsetup reset` - Reset all demo data with confirmation prompt
+- `./mmsetup wait-for-start` - Wait for Mattermost server to be ready
 
 ### Component Management
 - `make run-core` - Start core services (Postgres, LDAP, Prometheus, etc.)

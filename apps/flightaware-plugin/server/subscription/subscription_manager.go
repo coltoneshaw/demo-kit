@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/coltoneshaw/demokit/flightaware-plugin/server/flight"
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
 )
 
@@ -141,6 +142,13 @@ func (sm *SubscriptionManager) startSubscription(sub *FlightSubscription) {
 
 		response := sm.flightService.FormatFlightResponse(flights, sub.Airport)
 
+		// Check if channel still exists before sending update
+		if !sm.isChannelValid(sub.ChannelID) {
+			sm.client.Log.Info("Channel no longer exists, removing flight subscription", "channel_id", sub.ChannelID, "subscription_id", sub.ID)
+			sm.cleanupInvalidSubscription(sub, "channel no longer exists")
+			return
+		}
+
 		if err := sm.messageService.SendPublicMessage(sub.ChannelID, response); err != nil {
 			sm.client.Log.Error("Failed to send flight update to channel", 
 				"subscription_id", sub.ID, 
@@ -213,5 +221,56 @@ func (sm *SubscriptionManager) saveSubscriptions() {
 	} else {
 		sm.client.Log.Debug("Successfully saved subscriptions", 
 			"subscription_count", len(sm.subscriptions))
+	}
+}
+
+// isChannelValid checks if a channel still exists
+func (sm *SubscriptionManager) isChannelValid(channelID string) bool {
+	_, err := sm.client.Channel.Get(channelID)
+	return err == nil
+}
+
+// cleanupInvalidSubscription removes a subscription and logs the reason
+func (sm *SubscriptionManager) cleanupInvalidSubscription(sub *FlightSubscription, reason string) {
+	sm.client.Log.Info("Cleaning up invalid flight subscription", 
+		"subscription_id", sub.ID, 
+		"channel_id", sub.ChannelID, 
+		"airport", sub.Airport,
+		"reason", reason)
+	
+	// Stop the subscription if it's running
+	if sub.StopChan != nil {
+		close(sub.StopChan)
+	}
+	
+	// Remove from subscriptions map
+	sm.RemoveSubscription(sub.ID)
+	
+	// Try to notify the user about the cleanup if possible
+	sm.tryNotifyUserOfCleanup(sub, reason)
+}
+
+// tryNotifyUserOfCleanup attempts to send a DM to the user about subscription cleanup
+func (sm *SubscriptionManager) tryNotifyUserOfCleanup(sub *FlightSubscription, reason string) {
+	// Create a DM channel with the user
+	dmChannel, err := sm.client.Channel.GetDirect(sm.messageService.GetBotUserID(), sub.UserID)
+	if err != nil {
+		sm.client.Log.Debug("Could not create DM channel for cleanup notification", "user_id", sub.UserID, "error", err)
+		return
+	}
+	
+	message := fmt.Sprintf("🧹 **Flight Subscription Cleanup**\n\n"+
+		"Your flight subscription for **%s** airport (ID: `%s`) has been automatically removed because %s.\n\n"+
+		"If you need flight updates, please set up a new subscription in an active channel.",
+		sub.Airport, sub.ID, reason)
+	
+	post := &model.Post{
+		ChannelId: dmChannel.Id,
+		Message:   message,
+		UserId:    sm.messageService.GetBotUserID(),
+	}
+	
+	if err := sm.client.Post.CreatePost(post); err != nil {
+		sm.client.Log.Debug("Could not send cleanup notification to user", "user_id", sub.UserID, "error", err)
 	}
 }

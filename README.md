@@ -127,17 +127,69 @@ go build -o mmsetup ./cmd
 
 ```bash
 # Use default config.json in root directory
-./mmsetup -setup
+./mmsetup setup
 
 # Specify a custom config file path
-./mmsetup -setup -config /path/to/config.json
+./mmsetup setup -config /path/to/config.json
 
 # Display help for config.json format
-./mmsetup -help-config
+./mmsetup help-config
 
 # Show login information
-./mmsetup -echo-logins
+./mmsetup echo-logins
 ```
+
+### Plugin Management
+
+The setup tool includes intelligent plugin management with version checking and automatic updates:
+
+```bash
+# Standard setup - skips already installed plugins
+./mmsetup setup
+
+# Check for plugin updates and install newer versions
+./mmsetup setup --check-updates
+
+# Force reinstall local plugins only
+./mmsetup setup --reinstall-plugins local
+
+# Force reinstall all plugins (local + GitHub)
+./mmsetup setup --reinstall-plugins all
+
+# Combine update checking with plugin reinstall
+./mmsetup setup --reinstall-plugins all --check-updates
+```
+
+### Data Management
+
+```bash
+# Reset all teams and users (with confirmation prompt)
+./mmsetup reset
+
+# Use bulk import method instead of individual API calls
+./mmsetup setup --bulk-import
+```
+
+## Features
+
+### Intelligent Plugin Management
+- **Automatic Plugin Detection**: Skips already installed plugins to avoid conflicts
+- **Version Checking**: Compares installed plugin versions with GitHub releases
+- **Selective Updates**: Update only when newer versions are available
+- **Local vs GitHub Plugins**: Separate handling for custom local plugins and GitHub releases
+- **Smart Categorization**: Automatically organizes channels using Playbooks API integration
+
+### Robust Bulk Import
+- **Two-Phase Import**: Separates infrastructure (teams/channels) from user data for better reliability
+- **Custom Type Support**: Handles channel categories and commands alongside standard Mattermost data
+- **Error Recovery**: Continues processing even if individual items fail
+- **File Lifecycle Management**: Proper cleanup of temporary files and uploads
+
+### Safety and Validation
+- **Confirmation Prompts**: Destructive operations require explicit confirmation with data counts
+- **Idempotent Operations**: Safe to run setup multiple times without data corruption
+- **Comprehensive Logging**: Clear feedback on what actions are being taken
+- **License Validation**: Ensures Mattermost Enterprise features are available
 
 ## Applications
 

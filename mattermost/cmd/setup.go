@@ -7,7 +7,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var useBulkImport bool
+var (
+	useBulkImport     bool
+	reinstallPlugins  string
+	checkUpdates      bool
+)
 
 // setupCmd represents the setup command
 var setupCmd = &cobra.Command{
@@ -23,16 +27,30 @@ This command will:
 The setup process uses the connection flags to connect to the target Mattermost server.
 By default, it uses a two-phase bulk import (infrastructure first, then users).
 
+Plugin Options:
+  --reinstall-plugins local   Rebuild and redeploy custom local plugins only
+  --reinstall-plugins all     Rebuild all plugins and redeploy everything
+  --check-updates             Check for and install newer plugin versions from GitHub
+
 Use --bulk-import to use the original single-phase bulk import instead.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client := mmsetup.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
 
+		// Validate reinstall-plugins option
+		if reinstallPlugins != "" && reinstallPlugins != "local" && reinstallPlugins != "all" {
+			log.Fatalf("Invalid reinstall-plugins option: %s. Valid options: 'local', 'all'", reinstallPlugins)
+		}
+
+		forcePlugins := reinstallPlugins == "local" || reinstallPlugins == "all"
+		forceGitHubPlugins := reinstallPlugins == "all"
+		forceAll := false // Data import forcing would need a separate flag
+
 		if useBulkImport {
-			if err := client.SetupBulk(); err != nil {
+			if err := client.SetupBulkWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates); err != nil {
 				log.Fatalf("Bulk setup failed: %v", err)
 			}
 		} else {
-			if err := client.Setup(); err != nil {
+			if err := client.SetupWithForceAndUpdates(forcePlugins, forceGitHubPlugins, forceAll, checkUpdates); err != nil {
 				log.Fatalf("Setup failed: %v", err)
 			}
 		}
@@ -44,4 +62,10 @@ func init() {
 	
 	// Add the bulk import flag
 	setupCmd.Flags().BoolVar(&useBulkImport, "bulk-import", false, "Use bulk import API instead of individual API calls")
+	
+	// Add the reinstall-plugins flag
+	setupCmd.Flags().StringVar(&reinstallPlugins, "reinstall-plugins", "", "Plugin reinstall options: 'local' (rebuild custom plugins only), 'all' (rebuild all plugins)")
+	
+	// Add the check-updates flag
+	setupCmd.Flags().BoolVar(&checkUpdates, "check-updates", false, "Check for and install newer plugin versions from GitHub")
 }

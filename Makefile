@@ -16,7 +16,7 @@ check-mattermost:
 
 wait-for-mattermost:
 	@echo "Waiting for Mattermost API to become available..."
-	@cd mattermost && go run ./cmd/main.go -wait-for-start
+	@cd mattermost && go run ./cmd/main.go wait-for-start
 
 restore-keycloak:
 	@./scripts/keycloak.sh restore
@@ -35,7 +35,7 @@ run:
 	@make run-ai
 	@make run-rtcd
 	@make run-integrations
-	@cd mattermost && go run ./cmd/main.go -setup
+	@cd mattermost && go run ./cmd/main.go setup
 	@make echo-logins
 
 run-ai:
@@ -106,7 +106,7 @@ nuke:
 	@docker rmi demo-kit-weather-app demo-kit-flightaware-app demo-kit-missionops-app 2>/dev/null || true
 
 echo-logins:
-	@cd mattermost && go run ./cmd/main.go -echo-logins
+	@cd mattermost && go run ./cmd/main.go echo-logins
 	@./scripts/general.sh logins
 
 GO_PACKAGES=$(shell go list ./...)
