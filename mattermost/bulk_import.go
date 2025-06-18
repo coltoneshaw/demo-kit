@@ -41,6 +41,18 @@ type CommandImport struct {
 	} `json:"command"`
 }
 
+// ChannelBannerImport represents a channel banner import entry
+type ChannelBannerImport struct {
+	Type   string `json:"type"`
+	Banner struct {
+		Team            string `json:"team"`
+		Channel         string `json:"channel"`
+		Text            string `json:"text"`
+		BackgroundColor string `json:"background_color"`
+		Enabled         bool   `json:"enabled"`
+	} `json:"banner"`
+}
+
 // PluginImport represents a plugin import entry
 type PluginImport struct {
 	Type   string `json:"type"`
@@ -304,6 +316,10 @@ func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins b
 		return fmt.Errorf("failed to process channel categories: %w", err)
 	}
 
+	if err := c.processChannelBanners(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to process channel banners: %w", err)
+	}
+
 	if err := c.importUsers(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to import users: %w", err)
 	}
@@ -353,6 +369,7 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 	// Define custom types that should be skipped during bulk import
 	customTypes := map[string]bool{
 		"channel-category": true,
+		"channel-banner":   true,
 		"command":          true,
 		"plugin":           true,
 		"user-attribute":   true,
@@ -465,6 +482,59 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 		}).Info("✅ Channel categorization complete")
 	} else {
 		Log.Info("✅ All channels already properly categorized")
+	}
+
+	return scanner.Err()
+}
+
+// processChannelBanners processes channel banners
+func (c *Client) processChannelBanners(bulkImportPath string) error {
+	Log.WithFields(logrus.Fields{"file_path": bulkImportPath}).Info("🎯 Processing channel banners")
+
+	file, err := os.Open(bulkImportPath)
+	if err != nil {
+		return err
+	}
+	defer closeWithLog(file, "bulk import file")
+
+	bannersCount := 0
+	errorCount := 0
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var bannerImport ChannelBannerImport
+		if err := json.Unmarshal([]byte(line), &bannerImport); err != nil {
+			continue
+		}
+
+		if bannerImport.Type == "channel-banner" {
+			if err := c.setChannelBanner(bannerImport.Banner.Team, bannerImport.Banner.Channel, bannerImport.Banner.Text, bannerImport.Banner.BackgroundColor, bannerImport.Banner.Enabled); err != nil {
+				Log.WithFields(logrus.Fields{
+					"channel_name":     bannerImport.Banner.Channel,
+					"team_name":        bannerImport.Banner.Team,
+					"banner_text":      bannerImport.Banner.Text,
+					"background_color": bannerImport.Banner.BackgroundColor,
+					"error":            err.Error(),
+				}).Warn("⚠️ Failed to set channel banner")
+				errorCount++
+			} else {
+				bannersCount++
+			}
+		}
+	}
+
+	if bannersCount > 0 || errorCount > 0 {
+		Log.WithFields(logrus.Fields{
+			"banners_count": bannersCount,
+			"error_count":   errorCount,
+		}).Info("✅ Channel banner setup complete")
+	} else {
+		Log.Info("✅ No channel banners to process")
 	}
 
 	return scanner.Err()
@@ -689,6 +759,26 @@ func (c *Client) categorizeChannel(teamName, channelName, categoryName string) e
 	for _, channel := range channels {
 		if channel.Name == channelName {
 			return c.categorizeChannelAPI(channel.Id, channel.Name, categoryName)
+		}
+	}
+
+	return fmt.Errorf("channel '%s' not found in team '%s'", channelName, teamName)
+}
+
+// setChannelBanner sets a banner for a channel by name
+func (c *Client) setChannelBanner(teamName, channelName, text, backgroundColor string, enabled bool) error {
+	team, resp, err := c.API.GetTeamByName(context.Background(), teamName, "")
+	if err != nil {
+		return handleAPIError(fmt.Sprintf("failed to get team '%s'", teamName), err, resp)
+	}
+
+	channels, _, _ := c.API.GetPublicChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+	privateChannels, _, _ := c.API.GetPrivateChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+	channels = append(channels, privateChannels...)
+
+	for _, channel := range channels {
+		if channel.Name == channelName {
+			return c.setChannelBannerAPI(channel.Id, channel.Name, text, backgroundColor, enabled)
 		}
 	}
 

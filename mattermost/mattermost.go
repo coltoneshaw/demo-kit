@@ -300,6 +300,39 @@ func (c *Client) categorizeChannelAPI(channelID string, channelName string, cate
 	return nil
 }
 
+// setChannelBannerAPI sets a banner for a channel using the Mattermost API
+func (c *Client) setChannelBannerAPI(channelID, channelName, text, backgroundColor string, enabled bool) error {
+	if channelID == "" {
+		return fmt.Errorf("channel ID is required")
+	}
+
+	Log.WithFields(logrus.Fields{
+		"channel_id": channelID,
+	}).Debug(fmt.Sprintf("🎯 Setting banner for %s: %s", channelName, text))
+
+	// Create the banner info using the proper model structure
+	bannerInfo := &model.ChannelBannerInfo{
+		Text:            &text,
+		BackgroundColor: &backgroundColor,
+		Enabled:         &enabled,
+	}
+
+	// Use PatchChannel to update the channel with banner info
+	channelPatch := &model.ChannelPatch{
+		BannerInfo: bannerInfo,
+	}
+
+	_, resp, err := c.API.PatchChannel(context.Background(), channelID, channelPatch)
+	if err != nil {
+		return handleAPIError(fmt.Sprintf("failed to set banner for channel '%s'", channelName), err, resp)
+	}
+
+	Log.WithFields(logrus.Fields{
+		"channel_id": channelID,
+	}).Info(fmt.Sprintf("✅ Successfully set banner for %s", channelName))
+	return nil
+}
+
 // SetupChannelCommands executes specified slash commands in channels sequentially
 // If any command fails, the entire setup process will abort
 func (c *Client) SetupChannelCommands() error {
@@ -1430,7 +1463,7 @@ func (c *Client) extractUserGroups(jsonlPath string) ([]ldapPkg.LDAPGroup, error
 
 	var groups []ldapPkg.LDAPGroup
 	scanner := bufio.NewScanner(file)
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -1454,7 +1487,7 @@ func (c *Client) extractUserGroups(jsonlPath string) ([]ldapPkg.LDAPGroup, error
 			}
 
 			groups = append(groups, group)
-			
+
 			Log.WithFields(logrus.Fields{
 				"group_name":      group.Name,
 				"unique_id":       group.UniqueID,
@@ -1528,7 +1561,7 @@ func (c *Client) setupLDAPGroups(config *LDAPConfig) error {
 		if err := ldapClient.CreateGroup(ldapConn, group, config); err != nil {
 			Log.WithFields(logrus.Fields{
 				"group_name": group.Name,
-				"error":     err.Error(),
+				"error":      err.Error(),
 			}).Error("Failed to create LDAP group")
 			return fmt.Errorf("failed to create group %s: %w", group.Name, err)
 		}
@@ -1561,7 +1594,7 @@ func (c *Client) linkLDAPGroups() error {
 		if err := c.linkSingleLDAPGroup(group); err != nil {
 			Log.WithFields(logrus.Fields{
 				"group_name": group.Name,
-				"error":     err.Error(),
+				"error":      err.Error(),
 			}).Warn("Failed to link LDAP group to Mattermost")
 			// Continue with other groups instead of failing completely
 			continue
