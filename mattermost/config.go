@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	
+	ldapPkg "github.com/coltoneshaw/demokit/mattermost/ldap"
 )
 
 // Default configuration file paths
@@ -45,6 +47,9 @@ type UserConfig struct {
 	Teams []string `json:"teams"`
 }
 
+// LDAPConfigFile represents LDAP configuration from config.json
+type LDAPConfigFile = ldapPkg.LDAPConfig
+
 // Config represents the main configuration structure
 type Config struct {
 	// Users is an array of user configurations
@@ -55,6 +60,9 @@ type Config struct {
 
 	// Plugins is an optional array of plugin configurations to download from GitHub
 	Plugins []PluginConfig `json:"plugins,omitempty"`
+
+	// LDAP contains LDAP server configuration
+	LDAP LDAPConfigFile `json:"ldap,omitempty"`
 }
 
 // ChannelConfig represents the configuration for a Mattermost channel

@@ -63,11 +63,25 @@ type UserAttributeImport struct {
 
 // UserAttributeField represents a custom profile field definition
 type UserAttributeField struct {
-	Name         string `json:"name"`
-	DisplayName  string `json:"display_name"`
-	Type         string `json:"type"`
-	HideWhenEmpty bool  `json:"hide_when_empty,omitempty"`
-	Required     bool   `json:"required,omitempty"`
+	Name          string   `json:"name"`
+	DisplayName   string   `json:"display_name"`
+	Type          string   `json:"type"`
+	HideWhenEmpty bool     `json:"hide_when_empty,omitempty"`
+	Required      bool     `json:"required,omitempty"`
+	// Extended configuration fields
+	LDAPAttribute string   `json:"ldap,omitempty"`        // LDAP attribute mapping
+	SAMLAttribute string   `json:"saml,omitempty"`        // SAML attribute mapping  
+	Options       []string `json:"options,omitempty"`     // Options for select fields
+	SortOrder     int      `json:"sort_order,omitempty"`  // Display order
+	ValueType     string   `json:"value_type,omitempty"`  // Value type constraint
+	Visibility    string   `json:"visibility,omitempty"`  // Visibility setting
+}
+
+// UserProfileImport represents a user profile assignment entry
+type UserProfileImport struct {
+	Type       string            `json:"type"`
+	User       string            `json:"user"`       // Username
+	Attributes map[string]string `json:"attributes"` // Map of attribute name to value
 }
 
 func closeWithLog(c io.Closer, label string) {
@@ -808,7 +822,7 @@ func (c *Client) processUserAttributes(bulkImportPath string) error {
 
 	// Ensure all custom fields exist
 	for _, field := range attributeFields {
-		if err := c.ensureCustomFieldExists(field.Name, field.DisplayName, field.Type, nil); err != nil {
+		if err := c.ensureCustomFieldExists(field); err != nil {
 			Log.WithFields(logrus.Fields{
 				"field_name": field.Name,
 				"error":      err.Error(),
@@ -829,7 +843,7 @@ func (c *Client) processUserAttributes(bulkImportPath string) error {
 
 
 // ensureCustomFieldExists creates a custom field if it doesn't exist
-func (c *Client) ensureCustomFieldExists(name, displayName, fieldType string, options []string) error {
+func (c *Client) ensureCustomFieldExists(field UserAttributeField) error {
 	// Get existing fields
 	existingFields, err := c.ListCustomProfileFields()
 	if err != nil {
@@ -837,30 +851,35 @@ func (c *Client) ensureCustomFieldExists(name, displayName, fieldType string, op
 	}
 
 	// Check if field already exists
-	for _, field := range existingFields {
-		if field.Name == name {
+	for _, existingField := range existingFields {
+		if existingField.Name == field.Name {
 			Log.WithFields(logrus.Fields{
-				"field_name": name,
+				"field_name": field.Name,
 			}).Debug("🔍 Custom field already exists")
 			return nil
 		}
 	}
 
-	// Create the field
+	// Create the field with extended configuration
 	Log.WithFields(logrus.Fields{
-		"field_name":    name,
-		"display_name":  displayName,
-		"field_type":    fieldType,
-		"options_count": len(options),
-	}).Info("📝 Creating custom profile field")
+		"field_name":     field.Name,
+		"display_name":   field.DisplayName,
+		"field_type":     field.Type,
+		"ldap_attribute": field.LDAPAttribute,
+		"saml_attribute": field.SAMLAttribute,
+		"options_count":  len(field.Options),
+		"sort_order":     field.SortOrder,
+		"value_type":     field.ValueType,
+		"visibility":     field.Visibility,
+	}).Info("📝 Creating custom profile field with extended configuration")
 
-	_, err = c.CreateCustomProfileField(name, displayName, fieldType, options)
+	_, err = c.CreateCustomProfileFieldExtended(field)
 	if err != nil {
-		return fmt.Errorf("failed to create custom field '%s': %w", name, err)
+		return fmt.Errorf("failed to create custom field '%s': %w", field.Name, err)
 	}
 
 	Log.WithFields(logrus.Fields{
-		"field_name": name,
+		"field_name": field.Name,
 	}).Info("✅ Successfully created custom profile field")
 
 	return nil

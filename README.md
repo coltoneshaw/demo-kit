@@ -214,6 +214,75 @@ go run main.go setup --reinstall-plugins all
 2. Local plugins are processed second
 3. Within each type, plugins are processed in JSONL file order
 
+### Custom User Attributes
+
+The setup tool supports custom user profile attributes that appear in user profiles and can be synchronized with LDAP when using the `--ldap` flag.
+
+#### How to Add a Custom Attribute
+
+To add a new custom attribute like "Department":
+
+1. **Define the attribute** in `bulk_import.jsonl`:
+```json
+{"type": "user-attribute", "attribute": {"name": "department", "display_name": "Department", "type": "text", "required": false, "ldap": "departmentNumber", "visibility": "when_set"}}
+```
+
+2. **Assign values to users** in `bulk_import.jsonl`:
+```json
+{"type": "user-profile", "user": "john.smith", "attributes": {"department": "Security Forces", "rank": "Colonel"}}
+{"type": "user-profile", "user": "maria.rodriguez", "attributes": {"department": "Operations", "rank": "Colonel"}}
+```
+
+3. **Run setup** to create the custom field:
+```bash
+./mmsetup setup
+```
+
+#### Attribute Configuration Options
+
+- **`name`** (required): Internal identifier used in user-profile entries
+- **`display_name`** (required): Label shown in the user interface
+- **`type`** (required): Field type (`text`, `select`, etc.)
+- **`required`** (optional): Whether all users must have this field
+- **`ldap`** (optional): LDAP attribute to map to (e.g., `departmentNumber`, `employeeType`)
+- **`visibility`** (optional): Who can see this field (`public`, `when_set`, `private`)
+- **`hide_when_empty`** (optional): Hide field when no value is set
+
+#### Assigning Attributes to Users
+
+Use `user-profile` entries to assign attribute values:
+
+```json
+{"type": "user-profile", "user": "username", "attributes": {"attribute_name": "value"}}
+```
+
+- **`user`**: Must match an existing username
+- **`attributes`**: Map of attribute names to values
+- **Character limit**: All values must be 64 characters or less
+
+#### LDAP Integration
+
+When using `--ldap`, any attribute with an `ldap` field gets added as an LDAP attribute using the exact name you specify:
+
+```json
+{"type": "user-attribute", "attribute": {"name": "department", "display_name": "Department", "type": "text", "ldap": "departmentNumber"}}
+{"type": "user-attribute", "attribute": {"name": "security_level", "display_name": "Security Level", "type": "text", "ldap": "securityClearance"}}
+{"type": "user-attribute", "attribute": {"name": "rank", "display_name": "Rank", "type": "text", "ldap": "employeeType"}}
+```
+
+The system will:
+1. Create LDAP attributes using exactly the names specified in the `ldap` field
+2. Populate those LDAP attributes with values from user-profile entries  
+3. Synchronize the data back to Mattermost user profiles
+
+You can use any LDAP attribute name you want - both standard LDAP schema attributes (like `employeeType`, `departmentNumber`) or custom attributes (like `rank`, `securityLevel`).
+
+#### Important Notes
+
+- **Validation**: Setup will fail if any attribute value exceeds 64 characters
+- **Matching**: Attribute names in user-profile entries must match those defined in user-attribute entries
+- **LDAP Sync**: When using `--ldap`, attributes are automatically synchronized after user creation
+
 ### Data Management
 
 ```bash
@@ -250,3 +319,67 @@ The demo kit includes several integrated applications:
 - **Weather App**: Provides weather data via slash commands
 - **Flight App**: Tracks flight departures
 - **Main Mattermost Server**: Enterprise Edition deployment
+
+## LDAP Troubleshooting
+
+When using the `--ldap` flag, you may need to troubleshoot LDAP connectivity and user data. Here are useful commands for diagnosing LDAP issues:
+
+### Testing LDAP Connection
+
+```bash
+# Test basic LDAP connectivity
+docker exec openldap ldapsearch -x -H ldap://localhost:10389 \
+  -D "cn=admin,dc=planetexpress,dc=com" \
+  -w GoodNewsEveryone \
+  -b "dc=planetexpress,dc=com" \
+  "(objectClass=*)"
+```
+
+### Searching for Specific Users
+
+```bash
+# Search for a specific user by username
+docker exec openldap ldapsearch -x -H ldap://localhost:10389 \
+  -D "cn=admin,dc=planetexpress,dc=com" \
+  -w GoodNewsEveryone \
+  -b "dc=planetexpress,dc=com" \
+  "(uid=charles.armstrong)"
+
+# Search for all users
+docker exec openldap ldapsearch -x -H ldap://localhost:10389 \
+  -D "cn=admin,dc=planetexpress,dc=com" \
+  -w GoodNewsEveryone \
+  -b "dc=planetexpress,dc=com" \
+  "(objectClass=Person)"
+```
+
+### Connection Troubleshooting
+
+If you encounter "Can't contact LDAP server" errors with the standard approach:
+
+```bash
+# This may fail with connection errors
+docker exec -it openldap ldapsearch -x \
+  -D "cn=admin,dc=planetexpress,dc=com" \
+  -w GoodNewsEveryone \
+  -b "dc=planetexpress,dc=com" \
+  "(uid=username)"
+```
+
+Use the alternative localhost connection method:
+
+```bash
+# Alternative: Use localhost inside container
+docker exec openldap ldapsearch -x -H ldap://localhost:10389 \
+  -D "cn=admin,dc=planetexpress,dc=com" \
+  -w GoodNewsEveryone \
+  -b "dc=planetexpress,dc=com" \
+  "(uid=username)"
+```
+
+### Common Issues
+
+- **Connection refused**: Ensure the OpenLDAP container is running and healthy
+- **Attribute type undefined**: Check LDAP schema and attribute mappings in the code
+- **Authentication failed**: Verify bind DN and password in environment variables
+

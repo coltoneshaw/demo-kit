@@ -1,0 +1,10 @@
+{
+  "ldap": {
+    "url": "ldap://localhost:10389",
+    "bind_dn": "cn=admin,dc=planetexpress,dc=com",
+    "bind_password": "GoodNewsEveryone",
+    "base_dn": "dc=planetexpress,dc=com",
+    "schema_bind_dn": "cn=admin,cn=config",
+    "schema_password": "GoodNewsEveryone"
+  }
+}

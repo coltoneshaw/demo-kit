@@ -10,14 +10,6 @@ setup-mattermost:
 	@cp ./files/mattermost/samlCert.crt ./volumes/mattermost/config
 	@cp ./license.mattermost ./volumes/mattermost/config/license.mattermost-enterprise
 
-
-check-mattermost:
-	@make wait-for-mattermost || (echo "Mattermost server not ready yet, will try again later"; exit 0)
-
-wait-for-mattermost:
-	@echo "Waiting for Mattermost API to become available..."
-	@cd mattermost && go run ./cmd/main.go wait-for-start
-
 restore-keycloak:
 	@./scripts/keycloak.sh restore
 
@@ -31,11 +23,10 @@ run:
 	@make restore-keycloak
 	@make run-core
 	@make setup-mattermost
-	@make wait-for-mattermost
-	@make run-ai
+	@go run ./main.go wait-for-start
 	@make run-rtcd
-	@make run-integrations
-	@cd mattermost && go run ./cmd/main.go setup
+	@docker exec -it mattermost mmctl user create --email user@example.com --username sysadmin --password Sys@dmin-sample1 --system-admin --email-verified --local
+	@go run ./main.go setup --verbose --ldap --config ./config.json
 	@make echo-logins
 
 run-ai:
@@ -54,10 +45,6 @@ run-ai:
 run-core:
 	@echo "Starting the core services... hang in there."
 	@docker-compose up -d postgres openldap prometheus grafana elasticsearch mattermost keycloak
-
-run-integrations:
-	@echo "Starting the integrations..."
-	@docker-compose up -d --build weather-app flightaware-app
 
 run-rtcd:
 	@echo "Starting RTCD..."
@@ -106,8 +93,7 @@ nuke:
 	@docker rmi demo-kit-weather-app demo-kit-flightaware-app demo-kit-missionops-app 2>/dev/null || true
 
 echo-logins:
-	@cd mattermost && go run ./cmd/main.go echo-logins
-	@./scripts/general.sh logins
+	@go run ./main.go echo-logins
 
 GO_PACKAGES=$(shell go list ./...)
 GO ?= $(shell command -v go 2> /dev/null)
