@@ -283,6 +283,53 @@ You can use any LDAP attribute name you want - both standard LDAP schema attribu
 - **Matching**: Attribute names in user-profile entries must match those defined in user-attribute entries
 - **LDAP Sync**: When using `--ldap`, attributes are automatically synchronized after user creation
 
+### LDAP Groups
+
+The setup tool supports creating and managing LDAP groups through the JSONL file format. Groups are automatically created in LDAP and linked to Mattermost when using the `--ldap` flag.
+
+#### Group Configuration
+
+Add groups to your `bulk_import.jsonl` file using the `user-groups` type:
+
+```jsonl
+{"type": "user-groups", "group": {"name": "command_staff", "id": "grp_002", "members": ["charles.armstrong", "maria.rodriguez", "john.smith"]}}
+```
+
+#### Group Configuration Fields
+
+- `name` (required): The group name (will be used as the LDAP CN)
+- `id` (required): A unique identifier for the group (stored as uniqueID LDAP attribute)
+- `members` (required): Array of usernames who should be members of this group
+
+#### LDAP Group Structure
+
+Groups are created in LDAP with the following structure:
+
+- **DN Format**: `cn={group_name},ou=groups,dc=planetexpress,dc=com`
+- **Object Classes**: `groupOfNames`, `top`, and the custom auxiliary class for uniqueID
+- **Attributes**:
+  - `cn`: Group name
+  - `uniqueID`: Unique group identifier
+  - `member`: Array of user DNs in format `uid={username},ou=people,dc=planetexpress,dc=com`
+
+#### Group Management Features
+
+- **Smart Sync**: Groups are synchronized to match the JSONL configuration
+  - Users not in the JSONL are removed from the group
+  - Users in the JSONL but not in the group are added
+  - No changes are made if membership already matches
+- **Mattermost Integration**: Groups are automatically linked to Mattermost via the LinkLdapGroup API
+- **Schema Extension**: Includes a custom `uniqueID` attribute for group identification
+
+#### Example Groups
+
+```jsonl
+{"type": "user-groups", "group": {"name": "all_members", "id": "grp_001", "members": ["admin.user", "charles.armstrong", "maria.rodriguez"]}}
+{"type": "user-groups", "group": {"name": "command_staff", "id": "grp_002", "members": ["charles.armstrong", "maria.rodriguez"]}}
+{"type": "user-groups", "group": {"name": "operations_team", "id": "grp_003", "members": ["maria.rodriguez", "robert.williams"]}}
+{"type": "user-groups", "group": {"name": "intelligence_team", "id": "grp_004", "members": ["james.thompson", "grace.turner"]}}
+```
+
 ### Data Management
 
 ```bash

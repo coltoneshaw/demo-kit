@@ -1171,13 +1171,26 @@ func (c *Client) SetupLDAPWithConfig(config *LDAPConfig) error {
 		return fmt.Errorf("failed to import users to LDAP: %w", err)
 	}
 
+	// Setup LDAP groups
+	if err := c.setupLDAPGroups(config); err != nil {
+		return fmt.Errorf("failed to setup LDAP groups: %w", err)
+	}
+
 	// Migrate existing Mattermost users from email auth to LDAP auth
 	if err := c.migrateUsersToLDAPAuth(users); err != nil {
 		return fmt.Errorf("failed to migrate users to LDAP auth: %w", err)
 	}
 
-	// Trigger LDAP sync to ensure Mattermost picks up all LDAP attributes
-	Log.Info("🔄 Triggering LDAP sync to update user attributes")
+	// Link LDAP groups to Mattermost (optional - API may not be available)
+	if err := c.linkLDAPGroups(); err != nil {
+		Log.WithFields(logrus.Fields{
+			"error": err.Error(),
+		}).Warn("Failed to link LDAP groups to Mattermost API (groups still created in LDAP)")
+		// Don't fail the entire setup if API linking fails
+	}
+
+	// Trigger LDAP sync to ensure Mattermost picks up all LDAP attributes and groups
+	Log.Info("🔄 Triggering LDAP sync to update user attributes and groups")
 	if err := c.syncLDAP(); err != nil {
 		return fmt.Errorf("failed to sync LDAP: %w", err)
 	}
@@ -1407,6 +1420,239 @@ func (c *Client) extractCustomAttributesFromProfiles(username string, userProfil
 	return customAttributes
 }
 
+// extractUserGroups extracts user groups from JSONL file
+func (c *Client) extractUserGroups(jsonlPath string) ([]ldapPkg.LDAPGroup, error) {
+	file, err := os.Open(jsonlPath)
+	if err != nil {
+		return nil, err
+	}
+	defer closeWithLog(file, "JSONL file")
+
+	var groups []ldapPkg.LDAPGroup
+	scanner := bufio.NewScanner(file)
+	
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+
+		// Process user-groups entries
+		if entryType, ok := entry["type"].(string); ok && entryType == "user-groups" {
+			group, err := parseGroupEntry(line)
+			if err != nil {
+				Log.WithFields(logrus.Fields{
+					"error": err.Error(),
+					"line":  line,
+				}).Warn("⚠️ Failed to parse user-groups entry, skipping")
+				continue
+			}
+
+			groups = append(groups, group)
+			
+			Log.WithFields(logrus.Fields{
+				"group_name":      group.Name,
+				"unique_id":       group.UniqueID,
+				"member_count":    len(group.Members),
+				"allow_reference": group.AllowReference,
+			}).Debug("📋 Extracted user group from JSONL")
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading JSONL file: %w", err)
+	}
+
+	if len(groups) == 0 {
+		Log.Info("📋 No user groups found in JSONL")
+	} else {
+		Log.WithFields(logrus.Fields{
+			"group_count": len(groups),
+		}).Info("📋 Successfully extracted user groups from JSONL")
+	}
+
+	return groups, nil
+}
+
+// setupLDAPGroups creates and configures LDAP groups from JSONL data
+func (c *Client) setupLDAPGroups(config *LDAPConfig) error {
+	Log.Info("👥 Setting up LDAP groups")
+
+	// Extract groups from JSONL
+	groups, err := c.extractUserGroups(c.BulkImportPath)
+	if err != nil {
+		return fmt.Errorf("failed to extract groups from JSONL: %w", err)
+	}
+
+	if len(groups) == 0 {
+		Log.Info("📋 No groups found in JSONL, skipping group setup")
+		return nil
+	}
+
+	// Connect to LDAP server
+	ldapConn, err := ldap.DialURL(config.URL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to LDAP server: %w", err)
+	}
+	defer func() {
+		if err := ldapConn.Close(); err != nil {
+			Log.WithError(err).Warn("Failed to close LDAP connection")
+		}
+	}()
+
+	// Bind as admin
+	if err := ldapConn.Bind(config.BindDN, config.BindPassword); err != nil {
+		return fmt.Errorf("failed to bind to LDAP server: %w", err)
+	}
+
+	// Ensure schema is applied (including uniqueID attribute for groups)
+	attributeFields, err := c.extractCustomAttributeDefinitions(c.BulkImportPath)
+	if err != nil {
+		return fmt.Errorf("failed to extract custom attribute definitions: %w", err)
+	}
+
+	if err := c.ensureCustomAttributeSchema(ldapConn, attributeFields, config); err != nil {
+		return fmt.Errorf("failed to ensure custom attribute schema: %w", err)
+	}
+
+	// Create LDAP client for group operations
+	ldapClient := ldapPkg.NewClient(config)
+
+	// Create each group
+	for _, group := range groups {
+		if err := ldapClient.CreateGroup(ldapConn, group, config); err != nil {
+			Log.WithFields(logrus.Fields{
+				"group_name": group.Name,
+				"error":     err.Error(),
+			}).Error("Failed to create LDAP group")
+			return fmt.Errorf("failed to create group %s: %w", group.Name, err)
+		}
+	}
+
+	Log.WithFields(logrus.Fields{
+		"group_count": len(groups),
+	}).Info("✅ Successfully set up LDAP groups")
+
+	return nil
+}
+
+// linkLDAPGroups links LDAP groups to Mattermost via API
+func (c *Client) linkLDAPGroups() error {
+	Log.Info("🔗 Linking LDAP groups to Mattermost")
+
+	// Extract groups from JSONL to get group information
+	groups, err := c.extractUserGroups(c.BulkImportPath)
+	if err != nil {
+		return fmt.Errorf("failed to extract groups from JSONL: %w", err)
+	}
+
+	if len(groups) == 0 {
+		Log.Info("📋 No groups found, skipping group linking")
+		return nil
+	}
+
+	linkedCount := 0
+	for _, group := range groups {
+		if err := c.linkSingleLDAPGroup(group); err != nil {
+			Log.WithFields(logrus.Fields{
+				"group_name": group.Name,
+				"error":     err.Error(),
+			}).Warn("Failed to link LDAP group to Mattermost")
+			// Continue with other groups instead of failing completely
+			continue
+		}
+		linkedCount++
+	}
+
+	Log.WithFields(logrus.Fields{
+		"linked_count": linkedCount,
+		"total_count":  len(groups),
+	}).Info("✅ Linked LDAP groups to Mattermost")
+
+	return nil
+}
+
+// linkSingleLDAPGroup links a single LDAP group to Mattermost and configures its properties
+func (c *Client) linkSingleLDAPGroup(group ldapPkg.LDAPGroup) error {
+	logFields := logrus.Fields{
+		"group_name": group.Name,
+		"unique_id":  group.UniqueID,
+	}
+	Log.WithFields(logFields).Debug("Linking LDAP group to Mattermost")
+
+	// Link the LDAP group to Mattermost
+	linkedGroup, _, err := c.API.LinkLdapGroup(context.Background(), group.Name)
+	if err != nil {
+		return fmt.Errorf("failed to link LDAP group '%s': %w", group.Name, err)
+	}
+
+	// Configure group properties if needed
+	if group.AllowReference {
+		if err := c.configureGroupProperties(linkedGroup.Id, group); err != nil {
+			Log.WithFields(logrus.Fields{
+				"group_name": group.Name,
+				"group_id":   linkedGroup.Id,
+				"error":      err.Error(),
+			}).Warn("⚠️ Failed to configure group properties - group linked but not fully configured")
+			// Continue - don't fail the entire operation for property configuration
+		}
+	}
+
+	logFields["allow_reference"] = group.AllowReference
+	Log.WithFields(logFields).Info("✅ Successfully linked and configured LDAP group")
+	return nil
+}
+
+// parseGroupEntry parses a single group entry from JSONL format
+func parseGroupEntry(line string) (ldapPkg.LDAPGroup, error) {
+	var groupImport UserGroupImport
+	if err := json.Unmarshal([]byte(line), &groupImport); err != nil {
+		return ldapPkg.LDAPGroup{}, fmt.Errorf("failed to unmarshal group entry: %w", err)
+	}
+
+	// Validate required fields
+	if groupImport.Group.Name == "" {
+		return ldapPkg.LDAPGroup{}, fmt.Errorf("group name is required")
+	}
+	if groupImport.Group.ID == "" {
+		return ldapPkg.LDAPGroup{}, fmt.Errorf("group ID is required")
+	}
+
+	return ldapPkg.LDAPGroup{
+		Name:           groupImport.Group.Name,
+		UniqueID:       groupImport.Group.ID,
+		Members:        groupImport.Group.Members,
+		AllowReference: groupImport.Group.AllowReference,
+	}, nil
+}
+
+// configureGroupProperties configures group properties based on the group configuration
+func (c *Client) configureGroupProperties(groupID string, group ldapPkg.LDAPGroup) error {
+	// Create patch request with desired properties
+	groupPatch := &model.GroupPatch{
+		AllowReference: &group.AllowReference,
+	}
+
+	// Apply the configuration
+	_, _, err := c.API.PatchGroup(context.Background(), groupID, groupPatch)
+	if err != nil {
+		return fmt.Errorf("failed to configure group properties: %w", err)
+	}
+
+	Log.WithFields(logrus.Fields{
+		"group_id":        groupID,
+		"group_name":      group.Name,
+		"allow_reference": group.AllowReference,
+	}).Debug("✅ Successfully configured group properties")
+
+	return nil
+}
+
 // ensureCustomAttributeSchema ensures custom attributes are defined in the LDAP schema
 func (c *Client) ensureCustomAttributeSchema(ldapConn *ldap.Conn, attributeFields []UserAttributeField, config *LDAPConfig) error {
 	Log.WithFields(logrus.Fields{
@@ -1576,8 +1822,12 @@ func (c *Client) GenerateLDIFContent(users []LDAPUser) (string, error) {
 			}
 		}
 
-		// Use a simple password for demo purposes
-		ldif.WriteString("userPassword: {SSHA}password123\n")
+		// Set password from user data or use default for demo purposes
+		if user.Password != "" {
+			ldif.WriteString(fmt.Sprintf("userPassword: %s\n", user.Password))
+		} else {
+			ldif.WriteString("userPassword: {SSHA}password123\n")
+		}
 		ldif.WriteString("\n")
 	}
 
@@ -1754,8 +2004,12 @@ func (c *Client) createLDAPUserWithConfig(ldapConn *ldap.Conn, user LDAPUser, co
 		addRequest.Attribute("title", []string{user.Position})
 	}
 
-	// Set a simple password for demo purposes
-	addRequest.Attribute("userPassword", []string{"password123"})
+	// Set password from JSONL or use default for demo purposes
+	if user.Password != "" {
+		addRequest.Attribute("userPassword", []string{user.Password})
+	} else {
+		addRequest.Attribute("userPassword", []string{"password123"})
+	}
 
 	// Add custom attributes if they exist
 	for ldapAttr, value := range user.CustomAttributes {

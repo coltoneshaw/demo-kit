@@ -63,6 +63,11 @@ func (c *Client) CreateAttributes(attributeFields []UserAttributeField, schemaCo
 	createdCount := 0
 	skippedCount := 0
 	
+	// First, ensure uniqueID attribute exists for groups
+	if err := c.ensureUniqueIDAttribute(ldapConn, schemaDN, schemaConfig); err != nil {
+		return fmt.Errorf("failed to ensure uniqueID attribute: %w", err)
+	}
+	
 	for i, field := range attributeFields {
 		if field.LDAPAttribute == "" {
 			continue
@@ -140,11 +145,9 @@ func (c *Client) CreateObjectClass(attributeFields []UserAttributeField, schemaC
 			mayAttributes = append(mayAttributes, field.LDAPAttribute)
 		}
 	}
-
-	if len(mayAttributes) == 0 {
-		Log.Info("No custom attributes to include in object class")
-		return nil
-	}
+	
+	// Always include uniqueID for groups support
+	mayAttributes = append(mayAttributes, "uniqueID")
 
 	// Check if object class already exists
 	exists, err := c.ObjectClassExists(ldapConn, schemaConfig.ObjectClassName)
@@ -330,6 +333,15 @@ func (c *Client) BuildSchemaLDIF(attributeFields []UserAttributeField, config *S
 	ldif.WriteString("# LDAP Schema Extensions for Mattermost Custom Attributes\n")
 	ldif.WriteString("# Generated automatically - do not edit manually\n\n")
 
+	// Add uniqueID attribute for groups
+	ldif.WriteString("# uniqueID Attribute for Groups\n")
+	ldif.WriteString("dn: cn={0}core,cn=schema,cn=config\n")
+	ldif.WriteString("changetype: modify\n")
+	ldif.WriteString("add: olcAttributetypes\n")
+	uniqueIDAttr := fmt.Sprintf("olcAttributetypes: ( %s.2.107 NAME 'uniqueID' DESC 'Unique identifier for groups' SYNTAX '1.3.6.1.4.1.1466.115.121.1.15' EQUALITY caseIgnoreMatch SINGLE-VALUE )", config.BaseOID)
+	ldif.WriteString(uniqueIDAttr + "\n")
+	ldif.WriteString("-\n\n")
+
 	// Add attribute type definitions
 	for _, attrDef := range attributeDefs {
 		ldif.WriteString(fmt.Sprintf("# Attribute Type: %s\n", attrDef.Name))
@@ -366,20 +378,21 @@ func (c *Client) BuildSchemaLDIF(attributeFields []UserAttributeField, config *S
 			mayAttributes = append(mayAttributes, field.LDAPAttribute)
 		}
 	}
+	
+	// Always include uniqueID for groups support
+	mayAttributes = append(mayAttributes, "uniqueID")
 
-	if len(mayAttributes) > 0 {
-		ldif.WriteString("# Auxiliary Object Class for Custom Attributes\n")
-		ldif.WriteString("dn: cn={0}core,cn=schema,cn=config\n")
-		ldif.WriteString("changetype: modify\n")
-		ldif.WriteString("add: olcObjectClasses\n")
-		objectClassLine := fmt.Sprintf("olcObjectClasses: ( %s NAME '%s' DESC '%s' AUXILIARY MAY ( %s ) )",
-			config.ObjectClassOID,
-			config.ObjectClassName,
-			"Auxiliary object class for Mattermost custom attributes",
-			strings.Join(mayAttributes, " $ "))
-		ldif.WriteString(objectClassLine + "\n")
-		ldif.WriteString("-\n\n")
-	}
+	ldif.WriteString("# Auxiliary Object Class for Custom Attributes\n")
+	ldif.WriteString("dn: cn={0}core,cn=schema,cn=config\n")
+	ldif.WriteString("changetype: modify\n")
+	ldif.WriteString("add: olcObjectClasses\n")
+	objectClassLine := fmt.Sprintf("olcObjectClasses: ( %s NAME '%s' DESC '%s' AUXILIARY MAY ( %s ) )",
+		config.ObjectClassOID,
+		config.ObjectClassName,
+		"Auxiliary object class for Mattermost custom attributes and groups",
+		strings.Join(mayAttributes, " $ "))
+	ldif.WriteString(objectClassLine + "\n")
+	ldif.WriteString("-\n\n")
 
 	return ldif.String(), nil
 }
@@ -437,4 +450,41 @@ func BuildAttributeDefs(attributeFields []UserAttributeField, config *SchemaConf
 	}
 
 	return definitions
+}
+
+// ensureUniqueIDAttribute ensures the uniqueID attribute exists for groups
+func (c *Client) ensureUniqueIDAttribute(ldapConn *ldap.Conn, schemaDN string, schemaConfig *SchemaConfig) error {
+	// Check if uniqueID attribute already exists
+	exists, err := c.AttributeExists(ldapConn, "uniqueID")
+	if err != nil {
+		Log.WithFields(logrus.Fields{
+			"attribute": "uniqueID",
+			"error":    err.Error(),
+		}).Warn("Failed to check if uniqueID attribute exists, attempting to create anyway")
+	} else if exists {
+		Log.WithFields(logrus.Fields{
+			"attribute": "uniqueID",
+		}).Debug("uniqueID attribute already exists, skipping creation")
+		return nil
+	}
+
+	// Create uniqueID attribute type definition
+	oid := fmt.Sprintf("%s.2.107", schemaConfig.BaseOID)
+	attributeTypeDef := fmt.Sprintf("( %s NAME 'uniqueID' DESC 'Unique identifier for groups' SYNTAX '1.3.6.1.4.1.1466.115.121.1.15' EQUALITY caseIgnoreMatch SINGLE-VALUE )", oid)
+
+	// Apply the modification
+	modifyRequest := ldap.NewModifyRequest(schemaDN, nil)
+	modifyRequest.Add("olcAttributetypes", []string{attributeTypeDef})
+
+	Log.WithFields(logrus.Fields{
+		"attribute": "uniqueID",
+		"oid":      oid,
+	}).Debug("Adding uniqueID attribute type")
+
+	if err := ldapConn.Modify(modifyRequest); err != nil {
+		return fmt.Errorf("failed to add uniqueID attribute type: %w", err)
+	}
+
+	Log.Info("✅ Successfully created uniqueID attribute for groups")
+	return nil
 }

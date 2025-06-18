@@ -84,6 +84,20 @@ type UserProfileImport struct {
 	Attributes map[string]string `json:"attributes"` // Map of attribute name to value
 }
 
+// GroupConfig represents group configuration from import data
+type GroupConfig struct {
+	Name           string   `json:"name"`             // Group name
+	ID             string   `json:"id"`               // Unique group identifier
+	Members        []string `json:"members"`          // Array of usernames
+	AllowReference bool     `json:"allow_reference"`  // Whether the group can be referenced (@mentions)
+}
+
+// UserGroupImport represents a user group import entry
+type UserGroupImport struct {
+	Type  string      `json:"type"`
+	Group GroupConfig `json:"group"`
+}
+
 func closeWithLog(c io.Closer, label string) {
 	if err := c.Close(); err != nil {
 		Log.WithFields(logrus.Fields{"label": label, "error": err.Error()}).Warn("⚠️ Failed to close resource")
