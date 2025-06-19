@@ -39,7 +39,7 @@ func (c *Client) ShowLDAPSchemaExtensions() error {
 	if err != nil {
 		return fmt.Errorf("failed to extract custom attribute definitions: %w", err)
 	}
-
+	
 	// Convert to LDAP package types and delegate to LDAP package
 	schemaConfig := ldapPkg.DefaultSchemaConfig()
 	ldapClient := ldapPkg.NewClient(&LDAPConfig{})
@@ -358,7 +358,7 @@ func (c *Client) setupLDAPGroups(config *LDAPConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to extract custom attribute definitions: %w", err)
 	}
-
+	
 	// Delegate to LDAP package
 	ldapClient := ldapPkg.NewClient(config)
 	return ldapClient.SetupLDAPGroups(groups, attributeFields, config)
@@ -444,7 +444,7 @@ func (c *Client) importUsersToLDAPWithConfig(users []LDAPUser, config *LDAPConfi
 	if err != nil {
 		return fmt.Errorf("failed to extract custom attribute definitions: %w", err)
 	}
-
+	
 	// Delegate to LDAP package
 	ldapClient := ldapPkg.NewClient(config)
 	return ldapClient.ImportUsersToLDAP(users, attributeFields, config)
