@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	
 	"github.com/coltoneshaw/demokit/mattermost"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -14,6 +16,7 @@ var (
 	ldapBindDN        string
 	ldapBindPassword  string
 	ldapBaseDN        string
+	customImportFile  string
 )
 
 // setupCmd represents the setup command
@@ -23,12 +26,15 @@ var setupCmd = &cobra.Command{
 	Long: `Setup users, teams, channels, and slash commands on a Mattermost server.
 
 This command will:
-- Create teams and channels from bulk_import.jsonl
+- Create teams and channels from bulk_import.jsonl (or custom file if specified)
 - Create users and add them to teams/channels
 - Execute any configured channel commands
 
 The setup process uses the connection flags to connect to the target Mattermost server.
 It uses a two-phase bulk import system (infrastructure first, then users) for optimal reliability.
+
+Import Options:
+  --import-file               Use a custom JSONL import file instead of bulk_import.jsonl
 
 Plugin Options:
   --reinstall-plugins local   Rebuild and redeploy custom local plugins only
@@ -43,6 +49,20 @@ LDAP Options:
   --ldap-base-dn              LDAP base DN (default: dc=planetexpress,dc=com)`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client := mattermost.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
+
+		// If custom import file is specified, override the default
+		if customImportFile != "" {
+			// Check if file exists
+			if _, err := os.Stat(customImportFile); os.IsNotExist(err) {
+				mattermost.Log.WithFields(logrus.Fields{
+					"file": customImportFile,
+				}).Fatal("Import file does not exist")
+			}
+			client.BulkImportPath = customImportFile
+			mattermost.Log.WithFields(logrus.Fields{
+				"file": customImportFile,
+			}).Info("Using custom import file")
+		}
 
 		// Validate reinstall-plugins option
 		if reinstallPlugins != "" && reinstallPlugins != "local" && reinstallPlugins != "all" {
@@ -135,6 +155,9 @@ func buildLDAPConfig(config *mattermost.Config) (*mattermost.LDAPConfig, error) 
 
 func init() {
 	RootCmd.AddCommand(setupCmd)
+	
+	// Add the import file flag
+	setupCmd.Flags().StringVar(&customImportFile, "import-file", "", "Use a custom JSONL import file instead of bulk_import.jsonl")
 	
 	// Add the reinstall-plugins flag
 	setupCmd.Flags().StringVar(&reinstallPlugins, "reinstall-plugins", "", "Plugin reinstall options: 'local' (rebuild custom plugins only), 'all' (rebuild all plugins)")

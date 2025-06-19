@@ -20,6 +20,12 @@ import (
 // Simple map: username -> list of channel names
 var globalChannelMemberships = make(map[string][]string)
 
+// Global storage for teams during import processing
+var globalImportedTeams = make([]string, 0)
+
+// Global storage for current import file path
+var globalCurrentImportPath string
+
 // Global variables for timestamp adjustment
 var (
 	timestampOffset  int64 = 0
@@ -222,9 +228,14 @@ func calculateTimestampOffset() error {
 
 // findLatestTimestamp scans all posts to find the most recent timestamp
 func findLatestTimestamp() (int64, error) {
-	bulkImportPath, err := findBulkImportPath()
-	if err != nil {
-		return 0, err
+	// Use the global import path if set, otherwise find the default
+	bulkImportPath := globalCurrentImportPath
+	if bulkImportPath == "" {
+		path, err := findBulkImportPath()
+		if err != nil {
+			return 0, err
+		}
+		bulkImportPath = path
 	}
 
 	file, err := os.Open(bulkImportPath)
@@ -484,12 +495,19 @@ func (c *Client) SetupWithSplitImport() error {
 
 // SetupWithSplitImportAndForce performs setup using two-phase bulk import with force options
 func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins bool) error {
-	bulkImportPath, err := findBulkImportPath()
-	if err != nil {
-		return err
+	// Use the client's BulkImportPath if set, otherwise find the default
+	bulkImportPath := c.BulkImportPath
+	if bulkImportPath == "" {
+		path, err := findBulkImportPath()
+		if err != nil {
+			return err
+		}
+		bulkImportPath = path
 	}
 
-	Log.Info("🚀 Starting two-phase bulk import")
+	Log.WithFields(logrus.Fields{
+		"file": bulkImportPath,
+	}).Info("🚀 Starting two-phase bulk import")
 
 	if err := c.importInfrastructure(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to import infrastructure: %w", err)
@@ -550,6 +568,9 @@ func (c *Client) importPosts(bulkImportPath string) error {
 
 // processLines processes specific line types from bulk import file
 func (c *Client) processLines(bulkImportPath string, lineTypes []string, processor func(string) error) error {
+	// Store the current import path globally for timestamp processing
+	globalCurrentImportPath = bulkImportPath
+	
 	file, err := os.Open(bulkImportPath)
 	if err != nil {
 		return fmt.Errorf("failed to open bulk import file: %w", err)
@@ -611,6 +632,21 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 		if slices.Contains(lineTypes, importLine.Type) {
 			lineToWrite := line
 
+			// Special handling for team entries - store team names
+			if importLine.Type == "team" {
+				var teamData map[string]any
+				if err := json.Unmarshal([]byte(line), &teamData); err == nil {
+					if teamName := getNestedString(teamData, "team", "name"); teamName != "" {
+						if !slices.Contains(globalImportedTeams, teamName) {
+							globalImportedTeams = append(globalImportedTeams, teamName)
+							Log.WithFields(logrus.Fields{
+								"team_name": teamName,
+							}).Debug("📋 Stored team name for channel membership processing")
+						}
+					}
+				}
+			}
+
 			// Special handling for user entries - extract channel memberships
 			if importLine.Type == "user" {
 				cleanedLine, err := extractChannelMemberships(line)
@@ -669,17 +705,35 @@ func (c *Client) processChannelMemberships() error {
 		return nil
 	}
 
+	if len(globalImportedTeams) == 0 {
+		Log.Warn("⚠️ No teams found during import, skipping channel memberships")
+		return nil
+	}
+
 	Log.WithFields(logrus.Fields{
 		"total_users": len(globalChannelMemberships),
+		"teams":       globalImportedTeams,
 	}).Info("👥 Processing channel memberships via API")
 
 	joinedCount := 0
 	errorCount := 0
 
-	// Get the team (assuming single team for simplicity)
-	team, _, err := c.API.GetTeamByName(context.Background(), "usaf-team", "")
-	if err != nil {
-		return fmt.Errorf("failed to find team: %w", err)
+	// Get all imported teams
+	teams := make(map[string]*model.Team)
+	for _, teamName := range globalImportedTeams {
+		team, _, err := c.API.GetTeamByName(context.Background(), teamName, "")
+		if err != nil {
+			Log.WithFields(logrus.Fields{
+				"team_name": teamName,
+				"error":     err.Error(),
+			}).Warn("⚠️ Failed to find team for channel membership")
+			continue
+		}
+		teams[teamName] = team
+	}
+
+	if len(teams) == 0 {
+		return fmt.Errorf("no teams found for channel membership processing")
 	}
 
 	// Process each user's channels
@@ -697,42 +751,57 @@ func (c *Client) processChannelMemberships() error {
 
 		// Join user to ALL channels (no filtering - let API handle duplicates)
 		for _, channelName := range channels {
-			channel, _, err := c.API.GetChannelByName(context.Background(), channelName, team.Id, "")
-			if err != nil {
+			channelFound := false
+			
+			// Try to find the channel in any of the teams
+			for teamName, team := range teams {
+				channel, _, err := c.API.GetChannelByName(context.Background(), channelName, team.Id, "")
+				if err != nil {
+					continue // Try next team
+				}
+
+				channelFound = true
+				
+				// Add user to channel via API (triggers hooks)
+				_, _, err = c.API.AddChannelMember(context.Background(), channel.Id, user.Id)
+				if err != nil {
+					// Check if user is already a member (not an error)
+					if strings.Contains(err.Error(), "already") || strings.Contains(err.Error(), "member") {
+						Log.WithFields(logrus.Fields{
+							"username":     username,
+							"channel_name": channelName,
+							"team":         teamName,
+						}).Debug("👤 User already member of channel")
+					} else {
+						Log.WithFields(logrus.Fields{
+							"username":     username,
+							"channel_name": channelName,
+							"team":         teamName,
+							"error":        err.Error(),
+						}).Warn("⚠️ Failed to add user to channel")
+						errorCount++
+						continue
+					}
+				} else {
+					joinedCount++
+					Log.WithFields(logrus.Fields{
+						"username":     username,
+						"channel_name": channelName,
+						"team":         teamName,
+					}).Debug("✅ Added user to channel via API")
+				}
+				
+				break // Channel found and processed, no need to check other teams
+			}
+			
+			if !channelFound {
 				Log.WithFields(logrus.Fields{
 					"channel_name": channelName,
 					"username":     username,
-					"error":        err.Error(),
-				}).Warn("⚠️ Failed to find channel for membership")
+					"teams":        globalImportedTeams,
+				}).Warn("⚠️ Failed to find channel in any team")
 				errorCount++
-				continue
 			}
-
-			// Add user to channel via API (triggers hooks)
-			_, _, err = c.API.AddChannelMember(context.Background(), channel.Id, user.Id)
-			if err != nil {
-				// Check if user is already a member (not an error)
-				if strings.Contains(err.Error(), "already") || strings.Contains(err.Error(), "member") {
-					Log.WithFields(logrus.Fields{
-						"username":     username,
-						"channel_name": channelName,
-					}).Debug("👤 User already member of channel")
-				} else {
-					Log.WithFields(logrus.Fields{
-						"username":     username,
-						"channel_name": channelName,
-						"error":        err.Error(),
-					}).Warn("⚠️ Failed to add user to channel")
-					errorCount++
-					continue
-				}
-			}
-
-			joinedCount++
-			Log.WithFields(logrus.Fields{
-				"username":     username,
-				"channel_name": channelName,
-			}).Debug("✅ Added user to channel via API")
 		}
 	}
 
@@ -741,8 +810,9 @@ func (c *Client) processChannelMemberships() error {
 		"error_count":  errorCount,
 	}).Info("✅ Channel membership processing complete")
 
-	// Clear global memberships after processing
+	// Clear global data after processing
 	globalChannelMemberships = make(map[string][]string)
+	globalImportedTeams = make([]string, 0)
 
 	return nil
 }
