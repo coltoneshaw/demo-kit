@@ -25,7 +25,7 @@ run:
 	@make setup-mattermost
 	@go run ./main.go wait-for-start
 	@make run-rtcd
-	@docker exec -it mattermost mmctl user create --email user@example.com --username sysadmin --password Sys@dmin-sample1 --system-admin --email-verified --local
+	#@docker exec -it mattermost mmctl user create --email user@example.com --username sysadmin --password Sys@dmin-sample1 --system-admin --email-verified --local
 	@go run ./main.go setup --verbose --ldap --config ./config.json
 	@make echo-logins
 

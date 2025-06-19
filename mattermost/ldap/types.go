@@ -32,11 +32,18 @@ type AttributeDefinition struct {
 
 // UserAttributeField represents a custom user attribute field configuration
 type UserAttributeField struct {
-	Name          string // Field name in Mattermost
-	DisplayName   string // Human-readable display name
-	Type          string // Field type (text, number, select, boolean)
-	LDAPAttribute string // LDAP attribute name mapping
-	Required      bool   // Whether the field is required
+	Name          string   `json:"name"`                   // Field name in Mattermost
+	DisplayName   string   `json:"display_name"`           // Human-readable display name
+	Type          string   `json:"type"`                   // Field type (text, number, select, boolean)
+	HideWhenEmpty bool     `json:"hide_when_empty,omitempty"`
+	Required      bool     `json:"required,omitempty"`     // Whether the field is required
+	// Extended configuration fields
+	LDAPAttribute string   `json:"ldap,omitempty"`         // LDAP attribute name mapping
+	SAMLAttribute string   `json:"saml,omitempty"`         // SAML attribute mapping
+	Options       []string `json:"options,omitempty"`      // Options for select fields
+	SortOrder     int      `json:"sort_order,omitempty"`   // Display order
+	ValueType     string   `json:"value_type,omitempty"`   // Value type constraint
+	Visibility    string   `json:"visibility,omitempty"`   // Visibility setting
 }
 
 // NewUserAttributeField creates a new UserAttributeField with the given parameters

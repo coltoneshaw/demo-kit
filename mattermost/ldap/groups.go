@@ -285,3 +285,89 @@ func (c *Client) calculateMembershipChanges(current, desired []string) (toAdd, t
 
 	return toAdd, toRemove
 }
+
+// ParseGroupEntry parses a single group entry from JSONL format
+func ParseGroupEntry(entry map[string]any) (LDAPGroup, error) {
+	groupData, ok := entry["group"].(map[string]any)
+	if !ok {
+		return LDAPGroup{}, fmt.Errorf("group field not found or invalid")
+	}
+
+	// Extract group fields
+	name, _ := groupData["name"].(string)
+	id, _ := groupData["id"].(string)
+	allowReference, _ := groupData["allow_reference"].(bool)
+	
+	// Extract members
+	var members []string
+	if membersInterface, ok := groupData["members"].([]any); ok {
+		for _, m := range membersInterface {
+			if member, ok := m.(string); ok {
+				members = append(members, member)
+			}
+		}
+	}
+
+	// Validate required fields
+	if name == "" {
+		return LDAPGroup{}, fmt.Errorf("group name is required")
+	}
+	if id == "" {
+		return LDAPGroup{}, fmt.Errorf("group ID is required")
+	}
+
+	return LDAPGroup{
+		Name:           name,
+		UniqueID:       id,
+		Members:        members,
+		AllowReference: allowReference,
+	}, nil
+}
+
+// SetupLDAPGroups creates and configures LDAP groups
+func (c *Client) SetupLDAPGroups(groups []LDAPGroup, attributeFields []UserAttributeField, config *LDAPConfig) error {
+	Log.Info("👥 Setting up LDAP groups")
+
+	if len(groups) == 0 {
+		Log.Info("📋 No groups found, skipping group setup")
+		return nil
+	}
+
+	// Connect to LDAP server
+	ldapConn, err := ldap.DialURL(config.URL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to LDAP server: %w", err)
+	}
+	defer func() {
+		if err := ldapConn.Close(); err != nil {
+			Log.WithError(err).Warn("Failed to close LDAP connection")
+		}
+	}()
+
+	// Bind as admin
+	if err := ldapConn.Bind(config.BindDN, config.BindPassword); err != nil {
+		return fmt.Errorf("failed to bind to LDAP server: %w", err)
+	}
+
+	// Ensure schema is applied (including uniqueID attribute for groups)
+	if err := c.EnsureCustomAttributeSchema(ldapConn, attributeFields, config); err != nil {
+		return fmt.Errorf("failed to ensure custom attribute schema: %w", err)
+	}
+
+	// Create each group
+	for _, group := range groups {
+		if err := c.CreateGroup(ldapConn, group, config); err != nil {
+			Log.WithFields(logrus.Fields{
+				"group_name": group.Name,
+				"error":      err.Error(),
+			}).Error("Failed to create LDAP group")
+			return fmt.Errorf("failed to create group %s: %w", group.Name, err)
+		}
+	}
+
+	Log.WithFields(logrus.Fields{
+		"group_count": len(groups),
+	}).Info("✅ Successfully set up LDAP groups")
+
+	return nil
+}

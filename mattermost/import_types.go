@@ -2,6 +2,8 @@ package mattermost
 
 import (
 	"encoding/json"
+	
+	"github.com/coltoneshaw/demokit/mattermost/ldap"
 )
 
 // BulkImportLine represents a single line in the bulk import JSONL file
@@ -76,21 +78,8 @@ type UserAttributeImport struct {
 	Attribute UserAttributeField `json:"attribute"`
 }
 
-// UserAttributeField represents a custom profile field definition
-type UserAttributeField struct {
-	Name          string `json:"name"`
-	DisplayName   string `json:"display_name"`
-	Type          string `json:"type"`
-	HideWhenEmpty bool   `json:"hide_when_empty,omitempty"`
-	Required      bool   `json:"required,omitempty"`
-	// Extended configuration fields
-	LDAPAttribute string   `json:"ldap,omitempty"`       // LDAP attribute mapping
-	SAMLAttribute string   `json:"saml,omitempty"`       // SAML attribute mapping
-	Options       []string `json:"options,omitempty"`    // Options for select fields
-	SortOrder     int      `json:"sort_order,omitempty"` // Display order
-	ValueType     string   `json:"value_type,omitempty"` // Value type constraint
-	Visibility    string   `json:"visibility,omitempty"` // Visibility setting
-}
+// UserAttributeField is an alias for the LDAP package attribute field type
+type UserAttributeField = ldap.UserAttributeField
 
 // UserProfileImport represents a user profile assignment entry
 type UserProfileImport struct {
@@ -170,13 +159,5 @@ type UserCustomProfileFields struct {
 	Fields map[string]string `json:"fields"`
 }
 
-// LDAPUser represents a user for LDAP import
-type LDAPUser struct {
-	Username         string
-	Email            string
-	FirstName        string
-	LastName         string
-	Password         string
-	Position         string
-	CustomAttributes map[string]string // Maps custom attribute names to their values
-}
+// LDAPUser is an alias for the LDAP package user type
+type LDAPUser = ldap.LDAPUser
