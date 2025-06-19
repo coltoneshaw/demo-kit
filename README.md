@@ -607,7 +607,7 @@ Create users with proper attributes and team membership:
 {"type": "user", "user": {
   "username": "john.smith", //unique
   "email": "john.smith@organization.com", //unique
-  "password": "SecurePassword123!",
+  "password": "password", // SHOULD ALWAYS BE password
   "nickname": "John Smith",
   "first_name": "John",
   "last_name": "Smith", 
