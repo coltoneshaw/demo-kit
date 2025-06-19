@@ -174,6 +174,12 @@ func (c *Client) processChannelCategories(bulkImportPath string) error {
 		}
 
 		if categoryImport.Type == "channel-category" {
+			// Store category info for user sidebar creation later
+			if globalChannelCategories[categoryImport.Team] == nil {
+				globalChannelCategories[categoryImport.Team] = make(map[string][]string)
+			}
+			globalChannelCategories[categoryImport.Team][categoryImport.Category] = categoryImport.Channels
+			
 			for _, channelName := range categoryImport.Channels {
 				if err := c.categorizeChannel(categoryImport.Team, channelName, categoryImport.Category); err != nil {
 					if err.Error() == "ALREADY_CATEGORIZED" {

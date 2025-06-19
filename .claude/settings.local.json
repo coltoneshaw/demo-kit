@@ -25,7 +25,8 @@
       "Bash(go run:*)",
       "Bash(docker exec:*)",
       "Bash(ls:*)",
-      "Bash(go vet:*)"
+      "Bash(go vet:*)",
+      "Bash(go list:*)"
     ],
     "deny": []
   }

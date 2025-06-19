@@ -26,6 +26,10 @@ var globalImportedTeams = make([]string, 0)
 // Global storage for current import file path
 var globalCurrentImportPath string
 
+// Global storage for channel categories during import processing
+// Map: team -> category -> list of channel names
+var globalChannelCategories = make(map[string]map[string][]string)
+
 // Global variables for timestamp adjustment
 var (
 	timestampOffset  int64 = 0
@@ -537,6 +541,10 @@ func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins b
 		return fmt.Errorf("failed to process channel memberships: %w", err)
 	}
 
+	if err := c.createUserSidebarCategories(); err != nil {
+		return fmt.Errorf("failed to create user sidebar categories: %w", err)
+	}
+
 	if err := c.processUserAttributes(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to process user attributes: %w", err)
 	}
@@ -570,7 +578,7 @@ func (c *Client) importPosts(bulkImportPath string) error {
 func (c *Client) processLines(bulkImportPath string, lineTypes []string, processor func(string) error) error {
 	// Store the current import path globally for timestamp processing
 	globalCurrentImportPath = bulkImportPath
-	
+
 	file, err := os.Open(bulkImportPath)
 	if err != nil {
 		return fmt.Errorf("failed to open bulk import file: %w", err)
@@ -596,6 +604,8 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 		"plugin":           true,
 		"user-attribute":   true,
 		"user-profile":     true,
+		"post":             true,
+		"user-groups":      true,
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -752,7 +762,7 @@ func (c *Client) processChannelMemberships() error {
 		// Join user to ALL channels (no filtering - let API handle duplicates)
 		for _, channelName := range channels {
 			channelFound := false
-			
+
 			// Try to find the channel in any of the teams
 			for teamName, team := range teams {
 				channel, _, err := c.API.GetChannelByName(context.Background(), channelName, team.Id, "")
@@ -761,7 +771,7 @@ func (c *Client) processChannelMemberships() error {
 				}
 
 				channelFound = true
-				
+
 				// Add user to channel via API (triggers hooks)
 				_, _, err = c.API.AddChannelMember(context.Background(), channel.Id, user.Id)
 				if err != nil {
@@ -790,10 +800,10 @@ func (c *Client) processChannelMemberships() error {
 						"team":         teamName,
 					}).Debug("✅ Added user to channel via API")
 				}
-				
+
 				break // Channel found and processed, no need to check other teams
 			}
-			
+
 			if !channelFound {
 				Log.WithFields(logrus.Fields{
 					"channel_name": channelName,
@@ -813,6 +823,200 @@ func (c *Client) processChannelMemberships() error {
 	// Clear global data after processing
 	globalChannelMemberships = make(map[string][]string)
 	globalImportedTeams = make([]string, 0)
+
+	return nil
+}
+
+// createUserSidebarCategories creates sidebar categories for each user based on their channel memberships
+func (c *Client) createUserSidebarCategories() error {
+	if len(globalChannelCategories) == 0 {
+		Log.Info("ℹ️ No channel categories to process for user sidebars")
+		return nil
+	}
+
+	Log.Info("⏳ Waiting 10 seconds before creating user sidebar categories to allow API to settle...")
+	time.Sleep(10 * time.Second)
+	
+	Log.Info("📂 Creating user sidebar categories")
+
+	// First, fetch all channels for all teams to build a lookup map
+	channelLookup := make(map[string]map[string]*model.Channel) // team -> channelName -> channel
+	for teamName := range globalChannelCategories {
+		team, _, err := c.API.GetTeamByName(context.Background(), teamName, "")
+		if err != nil {
+			Log.WithFields(logrus.Fields{
+				"team_name": teamName,
+				"error":     err.Error(),
+			}).Warn("⚠️ Failed to find team for sidebar categories")
+			continue
+		}
+
+		// Get all channels for this team
+		channels, _, _ := c.API.GetPublicChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+		privateChannels, _, _ := c.API.GetPrivateChannelsForTeam(context.Background(), team.Id, 0, 1000, "")
+		channels = append(channels, privateChannels...)
+
+		if channelLookup[teamName] == nil {
+			channelLookup[teamName] = make(map[string]*model.Channel)
+		}
+
+		for _, channel := range channels {
+			channelLookup[teamName][channel.Name] = channel
+		}
+	}
+
+	// Build team lookup to avoid repeated API calls
+	teamLookup := make(map[string]*model.Team)
+	for teamName := range globalChannelCategories {
+		team, _, err := c.API.GetTeamByName(context.Background(), teamName, "")
+		if err == nil {
+			teamLookup[teamName] = team
+		} else {
+			Log.WithFields(logrus.Fields{
+				"team_name": teamName,
+				"error":     err.Error(),
+			}).Warn("⚠️ Failed to find team for sidebar categories")
+		}
+	}
+
+	// Get all users to create categories for
+	users, _, err := c.API.GetUsers(context.Background(), 0, 1000, "")
+	if err != nil {
+		return fmt.Errorf("failed to get users: %w", err)
+	}
+
+	createdCount := 0
+	errorCount := 0
+	processedUsers := 0
+
+	// Process each user
+	for _, user := range users {
+		// Skip system users
+		if user.IsBot {
+			continue
+		}
+
+		// Process each team's categories
+		for teamName, categories := range globalChannelCategories {
+			team, exists := teamLookup[teamName]
+			if !exists {
+				continue
+			}
+
+			// Check if user is a member of this team
+			_, _, err = c.API.GetTeamMember(context.Background(), team.Id, user.Id, "")
+			if err != nil {
+				continue // User not in this team
+			}
+
+			// Get user's channel memberships for this team
+			channelMembers, _, err := c.API.GetChannelMembersForUser(context.Background(), user.Id, team.Id, "")
+			if err != nil {
+				Log.WithFields(logrus.Fields{
+					"username":  user.Username,
+					"team_name": teamName,
+					"error":     err.Error(),
+				}).Warn("⚠️ Failed to get user channel memberships")
+				continue
+			}
+
+			// Build a set of channel IDs the user is a member of
+			userChannelIds := make(map[string]bool)
+			for _, cm := range channelMembers {
+				userChannelIds[cm.ChannelId] = true
+			}
+
+			// Create categories for this user
+			for categoryName, channelNames := range categories {
+				var channelIds []string
+
+				// Collect channel IDs for channels the user is a member of
+				for _, channelName := range channelNames {
+					if channel, exists := channelLookup[teamName][channelName]; exists {
+						if userChannelIds[channel.Id] {
+							channelIds = append(channelIds, channel.Id)
+						}
+					}
+				}
+
+				// Only create category if user has channels in it
+				if len(channelIds) > 0 {
+					category := &model.SidebarCategoryWithChannels{
+						SidebarCategory: model.SidebarCategory{
+							UserId:      user.Id,
+							TeamId:      team.Id,
+							DisplayName: categoryName,
+							Type:        model.SidebarCategoryCustom,
+						},
+						Channels: channelIds,
+					}
+
+					_, resp, err := c.API.CreateSidebarCategoryForTeamForUser(context.Background(), user.Id, team.Id, category)
+					if err != nil {
+						// Check various error cases
+						errorMsg := err.Error()
+						if resp != nil && resp.StatusCode == 400 {
+							if strings.Contains(errorMsg, "already exists") {
+								Log.WithFields(logrus.Fields{
+									"username":      user.Username,
+									"team_name":     teamName,
+									"category_name": categoryName,
+								}).Debug("📂 Category already exists for user")
+								continue
+							} else if strings.Contains(errorMsg, "Failed to insert record to database") {
+								// This might be a duplicate that's not properly detected
+								Log.WithFields(logrus.Fields{
+									"username":      user.Username,
+									"team_name":     teamName,
+									"category_name": categoryName,
+								}).Debug("📂 Category likely already exists (database insert failed)")
+								continue
+							}
+						}
+
+						// Log other errors as warnings
+						logFields := logrus.Fields{
+							"username":      user.Username,
+							"team_name":     teamName,
+							"category_name": categoryName,
+							"error":         errorMsg,
+						}
+						if resp != nil {
+							logFields["status_code"] = resp.StatusCode
+						}
+						Log.WithFields(logFields).Warn("⚠️ Failed to create sidebar category")
+						errorCount++
+					} else {
+						createdCount++
+						Log.WithFields(logrus.Fields{
+							"username":      user.Username,
+							"team_name":     teamName,
+							"category_name": categoryName,
+							"channel_count": len(channelIds),
+						}).Debug("✅ Created sidebar category for user")
+					}
+				}
+			}
+		}
+		
+		processedUsers++
+		// Log progress every 10 users
+		if processedUsers % 10 == 0 {
+			Log.WithFields(logrus.Fields{
+				"processed": processedUsers,
+				"total":     len(users),
+			}).Info("📊 User sidebar category creation progress")
+		}
+	}
+
+	Log.WithFields(logrus.Fields{
+		"created_count":   createdCount,
+		"error_count":     errorCount,
+		"processed_users": processedUsers,
+	}).Info("✅ User sidebar category creation complete")
+
+	// Clear global categories data
+	globalChannelCategories = make(map[string]map[string][]string)
 
 	return nil
 }
