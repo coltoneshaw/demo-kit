@@ -54,34 +54,34 @@
 {"type": "channel-category", "category": "Security", "team": "usaf-team", "channels": ["security-operations", "threat-reports", "security-weather"]}
 {"type": "channel-category", "category": "Communications", "team": "usaf-team", "channels": ["network-operations", "comms-equipment", "comms-weather-impacts"]}
 {"type": "channel-category", "category": "Weather", "team": "usaf-team", "channels": ["forecasting", "weather-alerts", "weather-research"]}
-{"type": "command", "command": {"team": "usaf-team", "channel": "command-weather-alerts", "text": "/weather --location \"Washington DC\" --subscribe --frequency 120m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "command-weather-alerts", "text": "/weather --location \"Andrews AFB\" --subscribe --frequency 120m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "command-weather-alerts", "text": "/weather subscribe --location \"Washington DC\" --subscribe --frequency 120m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "command-weather-alerts", "text": "/weather subscribe --location \"Andrews AFB\" --subscribe --frequency 120m"}}
 {"type": "command", "command": {"team": "usaf-team", "channel": "command-flight-updates", "text": "/flights subscribe --airport KDCA --frequency 3600"}}
 {"type": "command", "command": {"team": "usaf-team", "channel": "command-flight-updates", "text": "/flights subscribe --airport KADW --frequency 3600"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "ops-weather", "text": "/weather --location \"Nellis AFB\" --subscribe --frequency 120m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "ops-weather", "text": "/weather --location \"Edwards AFB\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "ops-weather", "text": "/weather --location \"Lackland AFB\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "ops-weather", "text": "/weather subscribe --location \"Nellis AFB\" --subscribe --frequency 120m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "ops-weather", "text": "/weather subscribe --location \"Edwards AFB\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "ops-weather", "text": "/weather subscribe --location \"Lackland AFB\" --subscribe --frequency 240m"}}
 {"type": "command", "command": {"team": "usaf-team", "channel": "base-flight-tracker", "text": "/flights subscribe --airport KLSV --frequency 1800"}}
 {"type": "command", "command": {"team": "usaf-team", "channel": "base-flight-tracker", "text": "/flights subscribe --airport KEDW --frequency 1800"}}
 {"type": "command", "command": {"team": "usaf-team", "channel": "base-flight-tracker", "text": "/flights subscribe --airport KLUF --frequency 1800"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "training-weather", "text": "/weather --location \"Vance AFB\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "training-weather", "text": "/weather --location \"Columbus AFB\" --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "intel-weather-monitoring", "text": "/weather --location Moscow --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "intel-weather-monitoring", "text": "/weather --location Beijing --subscribe --frequency 300m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "logistics-weather", "text": "/weather --location \"Dover AFB\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "logistics-weather", "text": "/weather --location \"Travis AFB\" --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "engineering-weather", "text": "/weather --location \"Tinker AFB\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "engineering-weather", "text": "/weather --location \"Hill AFB\" --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "medical-evac-weather", "text": "/weather --location \"Walter Reed\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "medical-evac-weather", "text": "/weather --location \"San Antonio\" --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "security-weather", "text": "/weather --location \"Pentagon\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "security-weather", "text": "/weather --location \"Cheyenne Mountain\" --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "comms-weather-impacts", "text": "/weather --location \"Offutt AFB\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "comms-weather-impacts", "text": "/weather --location \"Fort Meade\" --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather --location \"Scott AFB\" --subscribe --frequency 120m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather --location \"Peterson SFB\" --subscribe --frequency 180m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather --location \"Barksdale AFB\" --subscribe --frequency 240m"}}
-{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather --location \"Ramstein AB\" --subscribe --frequency 300m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "training-weather", "text": "/weather subscribe --location \"Vance AFB\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "training-weather", "text": "/weather subscribe --location \"Columbus AFB\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "intel-weather-monitoring", "text": "/weather subscribe --location Moscow --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "intel-weather-monitoring", "text": "/weather subscribe --location Beijing --subscribe --frequency 300m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "logistics-weather", "text": "/weather subscribe --location \"Dover AFB\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "logistics-weather", "text": "/weather subscribe --location \"Travis AFB\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "engineering-weather", "text": "/weather subscribe --location \"Tinker AFB\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "engineering-weather", "text": "/weather subscribe --location \"Hill AFB\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "medical-evac-weather", "text": "/weather subscribe --location \"Walter Reed\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "medical-evac-weather", "text": "/weather subscribe --location \"San Antonio\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "security-weather", "text": "/weather subscribe --location \"Pentagon\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "security-weather", "text": "/weather subscribe --location \"Cheyenne Mountain\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "comms-weather-impacts", "text": "/weather subscribe --location \"Offutt AFB\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "comms-weather-impacts", "text": "/weather subscribe --location \"Fort Meade\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather subscribe --location \"Scott AFB\" --subscribe --frequency 120m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather subscribe --location \"Peterson SFB\" --subscribe --frequency 180m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather subscribe --location \"Barksdale AFB\" --subscribe --frequency 240m"}}
+{"type": "command", "command": {"team": "usaf-team", "channel": "weather-alerts", "text": "/weather subscribe --location \"Ramstein AB\" --subscribe --frequency 300m"}}
 {"type": "channel-banner", "banner": {"team": "usaf-team", "channel": "threat-assessment", "text": "CLASSIFIED - TOP SECRET/SCI ONLY", "background_color": "#FF0000", "enabled": true}}
 {"type": "channel-banner", "banner": {"team": "usaf-team", "channel": "intel-briefings", "text": "CLASSIFIED - SECRET CLEARANCE REQUIRED", "background_color": "#FF0000", "enabled": true}}
 {"type": "channel-banner", "banner": {"team": "usaf-team", "channel": "intel-weather-monitoring", "text": "CLASSIFIED - COMPARTMENTED INFORMATION", "background_color": "#FF0000", "enabled": true}}

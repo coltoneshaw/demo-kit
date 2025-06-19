@@ -26,12 +26,12 @@
 {"type": "channel-category", "category": "Intelligence", "team": "evac-ops", "channels": ["intel-feed", "threat-assessment"]}
 {"type": "channel-category", "category": "Security", "team": "evac-ops", "channels": ["embassy-security", "host-nation-liaison"]}
 {"type": "channel-category", "category": "Medical", "team": "evac-ops", "channels": ["medevac-coordination"]}
-{"type": "command", "command": {"team": "evac-ops", "channel": "weather-operations", "text": "/weather --location \"Kabul Airport\" --subscribe --frequency 30m"}}
-{"type": "command", "command": {"team": "evac-ops", "channel": "weather-operations", "text": "/weather --location \"Kabul\" --subscribe --frequency 60m"}}
-{"type": "command", "command": {"team": "evac-ops", "channel": "weather-operations", "text": "/weather --location \"Bagram\" --subscribe --frequency 120m"}}
+{"type": "command", "command": {"team": "evac-ops", "channel": "weather-operations", "text": "/weather subscribe --location \"Kabul Airport\" --subscribe --frequency 30m"}}
+{"type": "command", "command": {"team": "evac-ops", "channel": "weather-operations", "text": "/weather subscribe --location \"Kabul\" --subscribe --frequency 60m"}}
+{"type": "command", "command": {"team": "evac-ops", "channel": "weather-operations", "text": "/weather subscribe --location \"Bagram\" --subscribe --frequency 120m"}}
 {"type": "command", "command": {"team": "evac-ops", "channel": "flight-tracking", "text": "/flights subscribe --airport OAKB --frequency 900"}}
 {"type": "command", "command": {"team": "evac-ops", "channel": "flight-tracking", "text": "/flights subscribe --airport OAIX --frequency 1800"}}
-{"type": "command", "command": {"team": "evac-ops", "channel": "convoy-ops", "text": "/weather --location \"Airport Road Kabul\" --subscribe --frequency 45m"}}
+{"type": "command", "command": {"team": "evac-ops", "channel": "convoy-ops", "text": "/weather subscribe --location \"Airport Road Kabul\" --subscribe --frequency 45m"}}
 {"type": "channel-banner", "banner": {"team": "evac-ops", "channel": "crisis-action-team", "text": "FLASH PRIORITY - EVACUATION IN PROGRESS", "background_color": "#FF0000", "enabled": true}}
 {"type": "channel-banner", "banner": {"team": "evac-ops", "channel": "intel-feed", "text": "TOP SECRET//SCI - EYES ONLY", "background_color": "#FF0000", "enabled": true}}
 {"type": "channel-banner", "banner": {"team": "evac-ops", "channel": "threat-assessment", "text": "SECRET - IMMEDIATE THREAT REPORTING", "background_color": "#FF0000", "enabled": true}}

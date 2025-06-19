@@ -604,7 +604,6 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 		"plugin":           true,
 		"user-attribute":   true,
 		"user-profile":     true,
-		"post":             true,
 		"user-groups":      true,
 	}
 
