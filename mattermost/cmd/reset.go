@@ -29,7 +29,18 @@ The reset operation requires the Mattermost server to have the following setting
 - ServiceSettings.EnableAPIUserDeletion = true
 - ServiceSettings.EnableAPITeamDeletion = true`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := mattermost.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
+		// Load the config first
+		config, err := mattermost.LoadConfig(configPath)
+		if err != nil {
+			mattermost.Log.WithFields(logrus.Fields{
+				"error": err.Error(),
+				"path":  configPath,
+			}).Fatal("Failed to load config file")
+		}
+
+		// Create client using config values
+		client := mattermost.NewClient(config.Server, config.AdminUsername, config.AdminPassword, config.DefaultTeam, configPath)
+		client.Config = config
 
 		// Load the bulk import data to show what will be deleted
 		data, err := client.LoadBulkImportData()

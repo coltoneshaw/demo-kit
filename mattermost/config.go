@@ -52,8 +52,23 @@ type LDAPConfigFile = ldapPkg.LDAPConfig
 
 // Config represents the main configuration structure
 type Config struct {
+	// Environment specifies the deployment environment (e.g., "local", "staging", "production")
+	Environment string `json:"environment,omitempty"`
+
+	// Server is the Mattermost server URL
+	Server string `json:"server"`
+
+	// AdminUsername is the admin account username
+	AdminUsername string `json:"admin_username"`
+
+	// AdminPassword is the admin account password
+	AdminPassword string `json:"admin_password"`
+
+	// DefaultTeam is the default team name for operations
+	DefaultTeam string `json:"default_team,omitempty"`
+
 	// Users is an array of user configurations
-	Users []UserConfig `json:"users"`
+	Users []UserConfig `json:"users,omitempty"`
 
 	// Teams is an optional map of team configurations
 	Teams map[string]TeamConfig `json:"teams,omitempty"`
@@ -171,12 +186,18 @@ func LoadConfig(path string) (*Config, error) {
 
 // validateConfig performs basic validation on the configuration
 func validateConfig(config *Config) error {
-	// Check if we have any users configured
-	if len(config.Users) == 0 {
-		return fmt.Errorf("no users defined in config")
+	// Check required admin fields
+	if config.Server == "" {
+		return fmt.Errorf("server URL is required in config")
+	}
+	if config.AdminUsername == "" {
+		return fmt.Errorf("admin_username is required in config")
+	}
+	if config.AdminPassword == "" {
+		return fmt.Errorf("admin_password is required in config")
 	}
 
-	// Validate each user has required fields
+	// Validate each user has required fields (if users are defined)
 	for i, user := range config.Users {
 		if user.Username == "" {
 			return fmt.Errorf("user at index %d is missing username", i)

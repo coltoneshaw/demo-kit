@@ -1,4 +1,9 @@
 {
+  "environment": "local",
+  "server": "http://localhost:8065",
+  "admin_username": "sysadmin",
+  "admin_password": "Sys@dmin-sample1",
+  "default_team": "test",
   "ldap": {
     "url": "ldap://localhost:10389",
     "bind_dn": "cn=admin,dc=planetexpress,dc=com",

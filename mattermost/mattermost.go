@@ -10,12 +10,6 @@ import (
 const (
 	// MaxWaitSeconds is the maximum time to wait for server startup
 	MaxWaitSeconds = 120
-
-	DefaultSiteURL = "http://localhost:8065"
-
-	// Default admin user credentials
-	DefaultAdminUsername = "sysadmin"
-	DefaultAdminPassword = "Sys@dmin-sample1"
 )
 
 // Client represents a Mattermost API client with configuration for managing

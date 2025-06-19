@@ -26,7 +26,8 @@
       "Bash(docker exec:*)",
       "Bash(ls:*)",
       "Bash(go vet:*)",
-      "Bash(go list:*)"
+      "Bash(go list:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": []
   }

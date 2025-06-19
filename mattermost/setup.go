@@ -207,8 +207,8 @@ func (c *Client) EchoLogins() {
 	Log.Info("===========================================")
 
 	Log.Info("- System admin")
-	Log.WithFields(logrus.Fields{"username": DefaultAdminUsername}).Info("     - username")
-	Log.WithFields(logrus.Fields{"password": DefaultAdminPassword}).Info("     - password")
+	Log.WithFields(logrus.Fields{"username": c.AdminUser}).Info("     - username")
+	Log.WithFields(logrus.Fields{"password": c.AdminPass}).Info("     - password")
 
 	// If we have configuration users, display them
 	if c.Config != nil && len(c.Config.Users) > 0 {

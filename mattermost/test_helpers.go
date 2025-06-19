@@ -7,7 +7,7 @@ import (
 
 // getSiteURLFromEnv gets the site URL from environment or returns default
 func getSiteURLFromEnv() (string, error) {
-	return getEnvVariable("MM_SiteURL", DefaultSiteURL), nil
+	return getEnvVariable("MM_SiteURL", "http://localhost:8065"), nil
 }
 
 // setupTestClient creates a client for testing
@@ -20,9 +20,9 @@ func setupTestClient(t *testing.T) *Client {
 		t.Fatalf("Failed to get siteURL from environment: %v", err)
 	}
 
-	// Create a new client with admin credentials from environment (using root.go defaults)
-	adminUsername := getEnvVariable("MM_Username", DefaultAdminUsername)
-	adminPassword := getEnvVariable("MM_Password", DefaultAdminPassword)
+	// Create a new client with admin credentials from environment (using test defaults)
+	adminUsername := getEnvVariable("MM_Username", "sysadmin")
+	adminPassword := getEnvVariable("MM_Password", "Sys@dmin-sample1")
 
 	client := NewClient(
 		siteURL,
@@ -31,6 +31,15 @@ func setupTestClient(t *testing.T) *Client {
 		"test-team",
 		"", // No config path
 	)
+	
+	// For tests, create a minimal config to support login flow
+	client.Config = &Config{
+		Environment:   "test",
+		Server:        siteURL,
+		AdminUsername: adminUsername,
+		AdminPassword: adminPassword,
+		DefaultTeam:   "test-team",
+	}
 
 	// Ensure we can connect to the server
 	err = client.WaitForStart()

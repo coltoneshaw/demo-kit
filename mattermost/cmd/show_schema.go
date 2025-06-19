@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/coltoneshaw/demokit/mattermost"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -20,10 +21,21 @@ This command analyzes the bulk_import.jsonl file and shows:
 This is useful for understanding how custom attributes are mapped to LDAP
 and what schema modifications would be needed in a production environment.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := mattermost.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
+		// Load the config first
+		config, err := mattermost.LoadConfig(configPath)
+		if err != nil {
+			mattermost.Log.WithFields(logrus.Fields{
+				"error": err.Error(),
+				"path":  configPath,
+			}).Fatal("Failed to load config file")
+		}
+
+		// Create client using config values
+		client := mattermost.NewClient(config.Server, config.AdminUsername, config.AdminPassword, config.DefaultTeam, configPath)
+		client.Config = config
 		
 		if err := client.ShowLDAPSchemaExtensions(); err != nil {
-			mattermost.Log.WithFields(map[string]interface{}{
+			mattermost.Log.WithFields(logrus.Fields{
 				"error": err.Error(),
 			}).Fatal("❌ Failed to show LDAP schema extensions")
 		}

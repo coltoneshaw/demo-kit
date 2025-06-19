@@ -11,10 +11,6 @@ import (
 
 var (
 	// Global flags
-	serverURL  string
-	adminUser  string
-	adminPass  string
-	teamName   string
 	configPath string
 	
 	// Logging flags
@@ -51,11 +47,7 @@ func init() {
 	cobra.OnInitialize(initLogger)
 	
 	// Global flags available to all commands
-	RootCmd.PersistentFlags().StringVar(&serverURL, "server", mattermost.DefaultSiteURL, "Mattermost server URL")
-	RootCmd.PersistentFlags().StringVar(&adminUser, "admin", mattermost.DefaultAdminUsername, "Admin username")
-	RootCmd.PersistentFlags().StringVar(&adminPass, "password", mattermost.DefaultAdminPassword, "Admin password")
-	RootCmd.PersistentFlags().StringVar(&teamName, "team", "test", "Default team name")
-	RootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Path to config.json file")
+	RootCmd.PersistentFlags().StringVar(&configPath, "config", "./config.json", "Path to config.json file")
 	
 	// Logging flags
 	RootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging with timestamps")

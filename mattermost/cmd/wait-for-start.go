@@ -16,12 +16,23 @@ This command polls the Mattermost server's ping endpoint until it responds
 successfully or times out. Useful for automation scripts that need to wait
 for the server to be ready before proceeding.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := mattermost.NewClient(serverURL, adminUser, adminPass, teamName, configPath)
+		// Load the config first
+		config, err := mattermost.LoadConfig(configPath)
+		if err != nil {
+			mattermost.Log.WithFields(logrus.Fields{
+				"error": err.Error(),
+				"path":  configPath,
+			}).Fatal("Failed to load config file")
+		}
+
+		// Create client using config values
+		client := mattermost.NewClient(config.Server, config.AdminUsername, config.AdminPassword, config.DefaultTeam, configPath)
+		client.Config = config
 
 		if err := client.WaitForStart(); err != nil {
 			mattermost.Log.WithFields(logrus.Fields{
 				"error": err.Error(),
-				"server": serverURL,
+				"server": config.Server,
 			}).Fatal("Failed to connect to Mattermost")
 		}
 		mattermost.Log.Info("✅ Mattermost API is responding successfully")
