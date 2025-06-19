@@ -247,6 +247,178 @@ func extractChannelMemberships(userLine string) (string, error) {
 	return string(cleanedJSON), nil
 }
 
+// Global variables for timestamp adjustment
+var (
+	timestampOffset int64 = 0
+	offsetCalculated bool = false
+)
+
+// adjustPostTimestamps adjusts post timestamps to be recent while preserving relative order
+func adjustPostTimestamps(postLine string) (string, error) {
+	// Calculate offset once on first post
+	if !offsetCalculated {
+		if err := calculateTimestampOffset(); err != nil {
+			Log.WithFields(logrus.Fields{"error": err.Error()}).Warn("⚠️ Failed to calculate timestamp offset")
+			return postLine, nil
+		}
+		offsetCalculated = true
+		Log.WithFields(logrus.Fields{"offset_hours": timestampOffset / (1000 * 60 * 60)}).Info("📅 Calculated timestamp offset for recent posts")
+	}
+	
+	// Parse and adjust timestamps
+	var data map[string]any
+	if err := json.Unmarshal([]byte(postLine), &data); err != nil {
+		return "", fmt.Errorf("failed to parse post JSON: %w", err)
+	}
+	
+	adjustAllTimestamps(data)
+	
+	// Marshal back to JSON
+	adjustedJSON, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal adjusted post JSON: %w", err)
+	}
+	
+	return string(adjustedJSON), nil
+}
+
+// adjustAllTimestamps applies offset to all timestamp fields in post data
+func adjustAllTimestamps(data map[string]any) {
+	post, ok := data["post"].(map[string]any)
+	if !ok {
+		return
+	}
+	
+	// Main post timestamp
+	adjustTimestampField(post, "create_at")
+	
+	// Reply timestamps
+	if replies, ok := post["replies"].([]any); ok {
+		for _, replyIntf := range replies {
+			if reply, ok := replyIntf.(map[string]any); ok {
+				adjustTimestampField(reply, "create_at")
+			}
+		}
+	}
+	
+	// Call post timestamps in props
+	if props, ok := post["props"].(map[string]any); ok {
+		adjustTimestampField(props, "start_at")
+		adjustTimestampField(props, "end_at")
+	}
+}
+
+// adjustTimestampField adds offset to a single timestamp field
+func adjustTimestampField(obj map[string]any, field string) {
+	if timestamp, ok := obj[field].(float64); ok {
+		obj[field] = int64(timestamp) + timestampOffset
+	}
+}
+
+// calculateTimestampOffset calculates how much to shift timestamps to make posts recent
+func calculateTimestampOffset() error {
+	maxTimestamp, err := findLatestTimestamp()
+	if err != nil {
+		return err
+	}
+	
+	// Make newest post ~5 minutes ago
+	now := time.Now().Unix() * 1000
+	fiveMinutesAgo := now - (5 * 60 * 1000)
+	timestampOffset = fiveMinutesAgo - maxTimestamp
+	
+	return nil
+}
+
+// findLatestTimestamp scans all posts to find the most recent timestamp
+func findLatestTimestamp() (int64, error) {
+	bulkImportPath, err := findBulkImportPath()
+	if err != nil {
+		return 0, err
+	}
+	
+	file, err := os.Open(bulkImportPath)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	
+	var maxTimestamp int64
+	scanner := bufio.NewScanner(file)
+	
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.Contains(line, `"type": "post"`) {
+			continue
+		}
+		
+		var data map[string]any
+		if json.Unmarshal([]byte(line), &data) != nil {
+			continue
+		}
+		
+		// Extract all timestamps from this post
+		timestamps := extractAllTimestampsFromPost(data)
+		for _, ts := range timestamps {
+			if ts > maxTimestamp {
+				maxTimestamp = ts
+			}
+		}
+	}
+	
+	if maxTimestamp == 0 {
+		return 0, fmt.Errorf("no post timestamps found")
+	}
+	
+	return maxTimestamp, nil
+}
+
+// extractAllTimestampsFromPost gets all timestamps from a post (main + replies + props)
+func extractAllTimestampsFromPost(data map[string]any) []int64 {
+	var timestamps []int64
+	
+	post, ok := data["post"].(map[string]any)
+	if !ok {
+		return timestamps
+	}
+	
+	// Main post timestamp
+	if ts := getTimestamp(post, "create_at"); ts > 0 {
+		timestamps = append(timestamps, ts)
+	}
+	
+	// Reply timestamps
+	if replies, ok := post["replies"].([]any); ok {
+		for _, replyIntf := range replies {
+			if reply, ok := replyIntf.(map[string]any); ok {
+				if ts := getTimestamp(reply, "create_at"); ts > 0 {
+					timestamps = append(timestamps, ts)
+				}
+			}
+		}
+	}
+	
+	// Props timestamps (call posts)
+	if props, ok := post["props"].(map[string]any); ok {
+		if ts := getTimestamp(props, "start_at"); ts > 0 {
+			timestamps = append(timestamps, ts)
+		}
+		if ts := getTimestamp(props, "end_at"); ts > 0 {
+			timestamps = append(timestamps, ts)
+		}
+	}
+	
+	return timestamps
+}
+
+// getTimestamp safely extracts a timestamp from an object
+func getTimestamp(obj map[string]any, field string) int64 {
+	if timestamp, ok := obj[field].(float64); ok {
+		return int64(timestamp)
+	}
+	return 0
+}
+
 func closeWithLog(c io.Closer, label string) {
 	if err := c.Close(); err != nil {
 		Log.WithFields(logrus.Fields{"label": label, "error": err.Error()}).Warn("⚠️ Failed to close resource")
@@ -577,6 +749,18 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 						"original_line": line,
 						"cleaned_line": cleanedLine,
 					}).Debug("📋 Extracted channel memberships from user")
+				}
+			}
+			
+			// Special handling for posts - adjust timestamps to be recent
+			if importLine.Type == "post" {
+				adjustedLine, err := adjustPostTimestamps(line)
+				if err != nil {
+					Log.WithFields(logrus.Fields{
+						"error": err.Error(),
+					}).Warn("⚠️ Failed to adjust post timestamps, using original")
+				} else {
+					lineToWrite = adjustedLine
 				}
 			}
 			
