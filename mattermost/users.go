@@ -13,6 +13,8 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/sirupsen/logrus"
+
+	ldapPkg "github.com/coltoneshaw/demokit/mattermost/ldap"
 )
 
 // LoadBulkImportData loads and parses the bulk_import.jsonl file
@@ -525,33 +527,21 @@ func (c *Client) ensureCustomFieldExists(field UserAttributeField) error {
 }
 
 // configureGroupProperties configures group properties based on the group configuration
-func (c *Client) configureGroupProperties(groupID string, group interface{}) error {
-	// The group parameter needs to be properly typed based on the actual group type
-	// For now, we'll use a generic approach
-	groupMap, ok := group.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("invalid group type")
-	}
-
-	allowReference, exists := groupMap["AllowReference"].(bool)
-	if !exists {
-		return fmt.Errorf("AllowReference field not found")
-	}
-
+func (c *Client) configureGroupProperties(groupID string, group ldapPkg.LDAPGroup) error {
 	// Create patch request with desired properties
 	groupPatch := &model.GroupPatch{
-		AllowReference: &allowReference,
+		AllowReference: &group.AllowReference,
 	}
 
 	// Apply the configuration
-	_, _, err := c.API.PatchGroup(context.Background(), groupID, groupPatch)
+	g, _, err := c.API.PatchGroup(context.Background(), groupID, groupPatch)
 	if err != nil {
 		return fmt.Errorf("failed to configure group properties: %w", err)
 	}
 
 	Log.WithFields(logrus.Fields{
-		"group_id":        groupID,
-		"allow_reference": allowReference,
+		"group_id":        g.Id,
+		"allow_reference": g.AllowReference,
 	}).Debug("✅ Successfully configured group properties")
 
 	return nil
