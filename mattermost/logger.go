@@ -68,15 +68,15 @@ func (f *CleanTextFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	// Format: [15:04:05] LEVEL message key=value caller="file.go:func()"
 	
 	// Always add timestamp first
-	b.WriteString(fmt.Sprintf("[%s] ", entry.Time.Format("15:04:05")))
+	fmt.Fprintf(b, "[%s] ", entry.Time.Format("15:04:05"))
 	
 	// Add level with color if enabled
 	level := strings.ToUpper(entry.Level.String())
-	if !f.TextFormatter.DisableColors {
+	if !f.DisableColors {
 		levelColor := getLevelColor(entry.Level)
-		b.WriteString(fmt.Sprintf("\x1b[%dm%-5s\x1b[0m ", levelColor, level))
+		fmt.Fprintf(b, "\x1b[%dm%-5s\x1b[0m ", levelColor, level)
 	} else {
-		b.WriteString(fmt.Sprintf("%-5s ", level))
+		fmt.Fprintf(b, "%-5s ", level)
 	}
 	
 	// Add message
@@ -94,16 +94,16 @@ func (f *CleanTextFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 			v := entry.Data[k]
 			
 			// Add field key with color if enabled
-			if !f.TextFormatter.DisableColors {
-				b.WriteString(fmt.Sprintf(" \x1b[36m%s\x1b[0m=", k)) // cyan for keys
+			if !f.DisableColors {
+				fmt.Fprintf(b, " \x1b[36m%s\x1b[0m=", k) // cyan for keys
 			} else {
-				b.WriteString(fmt.Sprintf(" %s=", k))
+				fmt.Fprintf(b, " %s=", k)
 			}
 			
 			// Quote values that contain spaces or special characters
 			str := fmt.Sprintf("%v", v)
 			if strings.ContainsAny(str, " \t\n\r") || strings.Contains(str, "=") {
-				b.WriteString(fmt.Sprintf("\"%s\"", str))
+				fmt.Fprintf(b, "\"%s\"", str)
 			} else {
 				b.WriteString(str)
 			}

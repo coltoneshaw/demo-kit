@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -66,27 +67,42 @@ type PluginImport struct {
 	} `json:"plugin"`
 }
 
+// UserRank represents military rank information
+type UserRank struct {
+	Username string
+	Rank     string
+	Level    int // For comparison (higher = senior)
+	Unit     string
+}
+
+// ChannelContext represents conversation context for a channel
+type ChannelContext struct {
+	Name        string
+	Topics      []string
+	Formality   string // "formal", "operational", "informal"
+	MessageType string // "briefing", "status", "coordination", "intel"
+}
 
 // UserAttributeImport represents a single user attribute definition import entry
 type UserAttributeImport struct {
-	Type      string `json:"type"`
+	Type      string             `json:"type"`
 	Attribute UserAttributeField `json:"attribute"`
 }
 
 // UserAttributeField represents a custom profile field definition
 type UserAttributeField struct {
-	Name          string   `json:"name"`
-	DisplayName   string   `json:"display_name"`
-	Type          string   `json:"type"`
-	HideWhenEmpty bool     `json:"hide_when_empty,omitempty"`
-	Required      bool     `json:"required,omitempty"`
+	Name          string `json:"name"`
+	DisplayName   string `json:"display_name"`
+	Type          string `json:"type"`
+	HideWhenEmpty bool   `json:"hide_when_empty,omitempty"`
+	Required      bool   `json:"required,omitempty"`
 	// Extended configuration fields
-	LDAPAttribute string   `json:"ldap,omitempty"`        // LDAP attribute mapping
-	SAMLAttribute string   `json:"saml,omitempty"`        // SAML attribute mapping  
-	Options       []string `json:"options,omitempty"`     // Options for select fields
-	SortOrder     int      `json:"sort_order,omitempty"`  // Display order
-	ValueType     string   `json:"value_type,omitempty"`  // Value type constraint
-	Visibility    string   `json:"visibility,omitempty"`  // Visibility setting
+	LDAPAttribute string   `json:"ldap,omitempty"`       // LDAP attribute mapping
+	SAMLAttribute string   `json:"saml,omitempty"`       // SAML attribute mapping
+	Options       []string `json:"options,omitempty"`    // Options for select fields
+	SortOrder     int      `json:"sort_order,omitempty"` // Display order
+	ValueType     string   `json:"value_type,omitempty"` // Value type constraint
+	Visibility    string   `json:"visibility,omitempty"` // Visibility setting
 }
 
 // UserProfileImport represents a user profile assignment entry
@@ -98,16 +114,137 @@ type UserProfileImport struct {
 
 // GroupConfig represents group configuration from import data
 type GroupConfig struct {
-	Name           string   `json:"name"`             // Group name
-	ID             string   `json:"id"`               // Unique group identifier
-	Members        []string `json:"members"`          // Array of usernames
-	AllowReference bool     `json:"allow_reference"`  // Whether the group can be referenced (@mentions)
+	Name           string   `json:"name"`            // Group name
+	ID             string   `json:"id"`              // Unique group identifier
+	Members        []string `json:"members"`         // Array of usernames
+	AllowReference bool     `json:"allow_reference"` // Whether the group can be referenced (@mentions)
 }
 
 // UserGroupImport represents a user group import entry
 type UserGroupImport struct {
 	Type  string      `json:"type"`
 	Group GroupConfig `json:"group"`
+}
+
+// Global storage for channel memberships during import processing  
+// Simple map: username -> list of channel names
+var globalChannelMemberships = make(map[string][]string)
+
+// JSON helper functions for clean, readable code
+
+// getNestedString safely gets a string value from nested JSON data
+func getNestedString(data map[string]any, keys ...string) string {
+	current := data
+	for i, key := range keys {
+		if i == len(keys)-1 {
+			// Last key - get the string value
+			if val, ok := current[key].(string); ok {
+				return val
+			}
+			return ""
+		}
+		// Navigate deeper
+		if next, ok := current[key].(map[string]any); ok {
+			current = next
+		} else {
+			return ""
+		}
+	}
+	return ""
+}
+
+// extractAllChannelNames gets all channel names from the user data
+func extractAllChannelNames(data map[string]any) []string {
+	var channels []string
+	
+	user, ok := data["user"].(map[string]any)
+	if !ok {
+		return channels
+	}
+	
+	teams, ok := user["teams"].([]any)
+	if !ok {
+		return channels
+	}
+	
+	for _, teamIntf := range teams {
+		if team, ok := teamIntf.(map[string]any); ok {
+			if channelsIntf, ok := team["channels"].([]any); ok {
+				for _, chIntf := range channelsIntf {
+					if ch, ok := chIntf.(map[string]any); ok {
+						if name, ok := ch["name"].(string); ok {
+							channels = append(channels, name)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return channels
+}
+
+// setDefaultChannels replaces all channel arrays with default channels
+func setDefaultChannels(data map[string]any) {
+	user, ok := data["user"].(map[string]any)
+	if !ok {
+		return
+	}
+	
+	teams, ok := user["teams"].([]any)
+	if !ok {
+		return
+	}
+	
+	defaultChannels := []any{
+		map[string]any{"name": "town-square", "roles": "channel_user"},
+		map[string]any{"name": "off-topic", "roles": "channel_user"},
+	}
+	
+	for _, teamIntf := range teams {
+		if team, ok := teamIntf.(map[string]any); ok {
+			team["channels"] = defaultChannels
+		}
+	}
+}
+
+// extractChannelMemberships extracts channel memberships from user JSON and returns cleaned user JSON
+func extractChannelMemberships(userLine string) (string, error) {
+	// Parse the JSON
+	var data map[string]any
+	if err := json.Unmarshal([]byte(userLine), &data); err != nil {
+		return "", fmt.Errorf("failed to parse user JSON: %w", err)
+	}
+	
+	// Extract username using helper
+	username := getNestedString(data, "user", "username")
+	if username == "" {
+		return "", fmt.Errorf("missing username")
+	}
+	
+	// Extract all channels using helper
+	channels := extractAllChannelNames(data)
+	
+	// Store channels for API processing
+	if len(channels) > 0 {
+		globalChannelMemberships[username] = channels
+	}
+	
+	// Replace with default channels using helper
+	setDefaultChannels(data)
+	
+	// Marshal back to JSON
+	cleanedJSON, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal cleaned user JSON: %w", err)
+	}
+	
+	Log.WithFields(logrus.Fields{
+		"username":        username,
+		"channels_stored": len(channels),
+	}).Debug("✅ Extracted and cleaned user")
+	
+	return string(cleanedJSON), nil
 }
 
 func closeWithLog(c io.Closer, label string) {
@@ -304,12 +441,12 @@ func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins b
 
 	Log.Info("🚀 Starting two-phase bulk import")
 
-	if err := c.processPlugins(bulkImportPath, forcePlugins, forceGitHubPlugins); err != nil {
-		return fmt.Errorf("failed to process plugins: %w", err)
-	}
-
 	if err := c.importInfrastructure(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to import infrastructure: %w", err)
+	}
+
+	if err := c.processPlugins(bulkImportPath, forcePlugins, forceGitHubPlugins); err != nil {
+		return fmt.Errorf("failed to process plugins: %w", err)
 	}
 
 	if err := c.processChannelCategories(bulkImportPath); err != nil {
@@ -320,17 +457,24 @@ func (c *Client) SetupWithSplitImportAndForce(forcePlugins, forceGitHubPlugins b
 		return fmt.Errorf("failed to process channel banners: %w", err)
 	}
 
+	if err := c.processCommands(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to process commands: %w", err)
+	}
+
 	if err := c.importUsers(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to import users: %w", err)
+	}
+
+	if err := c.processChannelMemberships(); err != nil {
+		return fmt.Errorf("failed to process channel memberships: %w", err)
 	}
 
 	if err := c.processUserAttributes(bulkImportPath); err != nil {
 		return fmt.Errorf("failed to process user attributes: %w", err)
 	}
 
-
-	if err := c.processCommands(bulkImportPath); err != nil {
-		return fmt.Errorf("failed to process commands: %w", err)
+	if err := c.importPosts(bulkImportPath); err != nil {
+		return fmt.Errorf("failed to import posts: %w", err)
 	}
 
 	return nil
@@ -342,9 +486,16 @@ func (c *Client) importInfrastructure(bulkImportPath string) error {
 	return c.processLines(bulkImportPath, []string{"team", "channel"}, c.ImportBulkData)
 }
 
+// importUsers imports only users first
 func (c *Client) importUsers(bulkImportPath string) error {
-	Log.WithFields(logrus.Fields{"import_type": "users", "file_path": bulkImportPath}).Info("📋 Processing users import")
+	Log.WithFields(logrus.Fields{"import_type": "users", "file_path": bulkImportPath}).Info("👥 Processing users import")
 	return c.processLines(bulkImportPath, []string{"user"}, c.ImportBulkData)
+}
+
+// importPosts imports posts after users are created
+func (c *Client) importPosts(bulkImportPath string) error {
+	Log.WithFields(logrus.Fields{"import_type": "posts", "file_path": bulkImportPath}).Info("💬 Processing posts import")
+	return c.processLines(bulkImportPath, []string{"post"}, c.ImportBulkData)
 }
 
 // processLines processes specific line types from bulk import file
@@ -407,14 +558,32 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 			continue
 		}
 
-		for _, lineType := range lineTypes {
-			if importLine.Type == lineType {
-				if _, err := tempFile.WriteString(line + "\n"); err != nil {
-					return fmt.Errorf("failed to write line: %w", err)
+		if slices.Contains(lineTypes, importLine.Type) {
+			lineToWrite := line
+			
+			// Special handling for user entries - extract channel memberships
+			if importLine.Type == "user" {
+				cleanedLine, err := extractChannelMemberships(line)
+				if err != nil {
+					Log.WithFields(logrus.Fields{
+						"username": "unknown",
+						"error":    err.Error(),
+						"original_line": line,
+					}).Warn("⚠️ Failed to extract channel memberships from user, using original line")
+				} else {
+					lineToWrite = cleanedLine
+					Log.WithFields(logrus.Fields{
+						"total_users_stored": len(globalChannelMemberships),
+						"original_line": line,
+						"cleaned_line": cleanedLine,
+					}).Debug("📋 Extracted channel memberships from user")
 				}
-				count++
-				break
 			}
+			
+			if _, err := tempFile.WriteString(lineToWrite + "\n"); err != nil {
+				return fmt.Errorf("failed to write line: %w", err)
+			}
+			count++
 		}
 	}
 
@@ -423,10 +592,97 @@ func (c *Client) processLines(bulkImportPath string, lineTypes []string, process
 	}
 
 	if count == 0 {
+		Log.WithFields(logrus.Fields{"line_types": lineTypes}).Info("ℹ️ No items found for import")
 		return nil
 	}
 
+	Log.WithFields(logrus.Fields{"line_types": lineTypes, "count": count}).Info("📤 Processing items for bulk import")
 	return processor(tempFile.Name())
+}
+
+// processChannelMemberships joins users to channels via API to trigger hooks
+func (c *Client) processChannelMemberships() error {
+	if len(globalChannelMemberships) == 0 {
+		Log.Info("ℹ️ No channel memberships to process")
+		return nil
+	}
+	
+	Log.WithFields(logrus.Fields{
+		"total_users": len(globalChannelMemberships),
+	}).Info("👥 Processing channel memberships via API")
+	
+	joinedCount := 0
+	errorCount := 0
+	
+	// Get the team (assuming single team for simplicity)
+	team, _, err := c.API.GetTeamByName(context.Background(), "usaf-team", "")
+	if err != nil {
+		return fmt.Errorf("failed to find team: %w", err)
+	}
+	
+	// Process each user's channels
+	for username, channels := range globalChannelMemberships {
+		// Get user by username
+		user, _, err := c.API.GetUserByUsername(context.Background(), username, "")
+		if err != nil {
+			Log.WithFields(logrus.Fields{
+				"username": username,
+				"error":    err.Error(),
+			}).Warn("⚠️ Failed to find user for channel membership")
+			errorCount++
+			continue
+		}
+		
+		// Join user to ALL channels (no filtering - let API handle duplicates)
+		for _, channelName := range channels {
+			channel, _, err := c.API.GetChannelByName(context.Background(), channelName, team.Id, "")
+			if err != nil {
+				Log.WithFields(logrus.Fields{
+					"channel_name": channelName,
+					"username":     username,
+					"error":        err.Error(),
+				}).Warn("⚠️ Failed to find channel for membership")
+				errorCount++
+				continue
+			}
+			
+			// Add user to channel via API (triggers hooks)
+			_, _, err = c.API.AddChannelMember(context.Background(), channel.Id, user.Id)
+			if err != nil {
+				// Check if user is already a member (not an error)
+				if strings.Contains(err.Error(), "already") || strings.Contains(err.Error(), "member") {
+					Log.WithFields(logrus.Fields{
+						"username":     username,
+						"channel_name": channelName,
+					}).Debug("👤 User already member of channel")
+				} else {
+					Log.WithFields(logrus.Fields{
+						"username":     username,
+						"channel_name": channelName,
+						"error":        err.Error(),
+					}).Warn("⚠️ Failed to add user to channel")
+					errorCount++
+					continue
+				}
+			}
+			
+			joinedCount++
+			Log.WithFields(logrus.Fields{
+				"username":     username,
+				"channel_name": channelName,
+			}).Debug("✅ Added user to channel via API")
+		}
+	}
+	
+	Log.WithFields(logrus.Fields{
+		"joined_count": joinedCount,
+		"error_count":  errorCount,
+	}).Info("✅ Channel membership processing complete")
+	
+	// Clear global memberships after processing
+	globalChannelMemberships = make(map[string][]string)
+	
+	return nil
 }
 
 // processChannelCategories processes channel categories
@@ -945,7 +1201,6 @@ func (c *Client) processUserAttributes(bulkImportPath string) error {
 	return scanner.Err()
 }
 
-
 // ensureCustomFieldExists creates a custom field if it doesn't exist
 func (c *Client) ensureCustomFieldExists(field UserAttributeField) error {
 	// Get existing fields
@@ -988,5 +1243,3 @@ func (c *Client) ensureCustomFieldExists(field UserAttributeField) error {
 
 	return nil
 }
-
-

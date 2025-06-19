@@ -333,6 +333,7 @@ func (c *Client) setChannelBannerAPI(channelID, channelName, text, backgroundCol
 	return nil
 }
 
+
 // SetupChannelCommands executes specified slash commands in channels sequentially
 // If any command fails, the entire setup process will abort
 func (c *Client) SetupChannelCommands() error {
